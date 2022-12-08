@@ -1,0 +1,23 @@
+{"paths": 
+{"RAW_DATA": "/users/wojemann/stim-seizures/RAW_DATA", 
+"iEEG_USR": "wojemann", 
+"iEEG_PWD": "/users/wojemann/woj_"}, 
+"patients": [
+    {"HUPID": "HUP211_phaseII"}, 
+    {"HUPID": "HUP212_phaseII"}, 
+    {"HUPID": "HUP213_phaseII"}, 
+    {"HUPID": "HUP214_phaseII"}, 
+    {"HUPID": "HUP216_phaseII"}, 
+    {"HUPID": "HUP218_phaseII"}, 
+    {"HUPID": "HUP223_phaseII"}, 
+    {"HUPID": "HUP224_phaseII"}, 
+    {"HUPID": "HUP225_phaseII"}, 
+    {"HUPID": "HUP228_phaseII"}, 
+    {"HUPID": "HUP229_phaseII"}, 
+    {"HUPID": "HUP230_phaseII"}, 
+    {"HUPID": "HUP235_phaseII"}, 
+    {"HUPID": "HUP238_phaseII"}, 
+    {"HUPID": "HUP246_phaseII"},
+    {"HUPID": "HUP247_phaseII"}
+    ]
+}
