@@ -1,26 +1,29 @@
-record_id,hupsubjno,ageatieegimplant,ieeg_ictal_onset_electrodes,ieeg_ictal_onset_anat_lat,ieeg_ictal_onset_anat_spec,cceps_run1_home_meds,cceps_run1_pulsewidth,cceps_run1_sz,cceps_run1_szelecs,cceps_run1_soz_electrodes,cceps_run1_seizure_typical,cceps_hfs_done,cceps_hfs_seizure,cceps_hfs_stim_elec_sz,cceps_hfs_sz_typical
-650,211,23,"LC1, LC2, LI1, LI2, LI3, LI4, LB1, LB2, LC1, LC2, RA1, RA2, RA3, RA4",3,"mesial temporal",1,300,0,,,,1,1,RB1,1
-651,212,55,,,,1,300,0,,,,1,1,LG2,2
-649,213,21,"LA1, LA2, LA3, LA4, LA5, LH3, LH4, LH5, LH6, LJ1, LJ2, LJ3, LJ4",1,multifocal,1,300,0,,,,1,1,"LJ1, LJ2, LJ3",2
-652,214,40,"LB1, LB2, RB1, RB2",3,"Mesial temporal",1,300,0,,,,1,1,"LB1, RB1",1
-658,216,21,"LC1, LC2, LB1, LB2",1,insula,1,300,0,,,,1,1,LC1,1
-677,218,49,"RA1, RA2, RB2, RB3, RB4, RD1, RD2, RD4",2,"mesial temporal",1,300,0,,,,1,1,"RA1, RB1",1
-695,219,26,"RB2, RB3, RC2, RC3",2,"mesial temporal",1,300,0,,,,2,,,
-656,220,49,"LC2, LC3",1,"mesial temporal lobe",1,300,0,,,,1,2,,
-782,222,32,LE5,1,"Temporal neocortex",1,300,0,,,,1,2,,
-785,223,46,"LB3, LC3",1,"mesial temporal",0,300,0,,,,1,1,LA1,1
-617,224,42,"RB2, RB3, RC2",2,hippocampus,0,300,1,LB1,"LB1, LB2, LB3, LB4, LB5, LC1, LC2, LC3, LC4, LA1, LA2, LA3, LA4, LA5",2,2,,,
-700,225,33,"RT4, RT5",2,"temporal neocortex",0,300,1,RC1,"RB1, RB2, RB3, RB4",1,1,2,,
-676,228,29,,,,1,300,0,,,,1,1,"LB1, RB1",1
-835,229,40,"LB1, LB2, LA1, LA2",1,"mesial temporal",1,300,1,LG1,"LB1, LB2, LC1, LC2, LC3",1,2,,,
-808,230,51,"LC1, LC2, LC3, LB1, LB2",1,hippocampus,1,500,1,LB5,"LC1, LC2, LC3, LC4",3,2,,,
-856,231,36,,,,1,500,0,,,,2,,,
-796,235,24,"LC1, LC2, LB2, LB3",1,"hippocampal tail/body",1,500,1,LA4,"LA1, LA2, LA3, LB1, LB2, LB3, LC1, LC2, LC3, LI1, LI2, LI3",1,1,1,LA1,1
-885,237,54,,,,1,500,0,,,,,,,
-861,238,35,"LB1, LB2, LB3, LC1, LC2, LC3",1,hippocampus,1,500,1,LC2,"LB1, LB2, LB3, LC1, LC2, LC3",1,1,2,,
-847,239,53,,,,1,500,0,,,,,,,
-877,240,39,,,,1,500,0,,,,,,,
-890,241,40,,,,1,500,0,,,,,,,
-860,242,44,,,,1,500,0,,,,,,,
-893,246,52,,,,1,500,1,LB2,"LA1, LA2, LA3, LA4, LB1, LB2, LB3, LB4, LC1, LC2, LC3, LC4",1,,,,
-921,247,,,,,1,500,1,RP2,,3,,,,
+record_id,hupsubjno,ageatieegimplant,ieeg_ictal_onset_electrodes,ieeg_ictal_onset_anat_lat,ieeg_ictal_onset_anat_spec,cceps_run1_home_meds,cceps_run1_pulsewidth,cceps_run1_sz,cceps_run1_szelecs,cceps_run1_soz_electrodes,cceps_run1_seizure_typical,cceps_hfs_done,cceps_hfs_seizure,cceps_hfs_stim_elec_sz,cceps_hfs_sz_typical,
+650,211,23,"LC1, LC2, LI1, LI2, LI3, LI4, LB1, LB2, LC1, LC2, RA1, RA2, RA3, RA4",3,mesial temporal,1,300,0,,,,1,1,RB1,1,
+651,212,55,,,,1,300,0,,,,1,1,LG2,2,
+649,213,21,"LA1, LA2, LA3, LA4, LA5, LH3, LH4, LH5, LH6, LJ1, LJ2, LJ3, LJ4",1,multifocal,1,300,0,,,,1,1,"LJ1, LJ2, LJ3",2,
+652,214,40,"LB1, LB2, RB1, RB2",3,Mesial temporal,1,300,0,,,,1,1,"LB1, RB1",1,
+658,216,21,"LC1, LC2, LB1, LB2",1,insula,1,300,0,,,,1,1,LC1,1,
+677,218,49,"RA1, RA2, RB2, RB3, RB4, RD1, RD2, RD4",2,mesial temporal,1,300,0,,,,1,1,"RA1, RB1",1,
+695,219,26,"RB2, RB3, RC2, RC3",2,mesial temporal,1,300,0,,,,2,,,,
+656,220,49,"LC2, LC3",1,mesial temporal lobe,1,300,0,,,,1,2,,,
+782,222,32,LE5,1,Temporal neocortex,1,300,0,,,,1,2,,,
+785,223,46,"LB3, LC3",1,mesial temporal,0,300,0,,,,1,1,LA1,1,
+617,224,42,"RB2, RB3, RC2",2,hippocampus,0,300,1,LB1,"LB1, LB2, LB3, LB4, LB5, LC1, LC2, LC3, LC4, LA1, LA2, LA3, LA4, LA5",2,2,,,,
+700,225,33,"RT4, RT5",2,temporal neocortex,0,300,1,RC1,"RB1, RB2, RB3, RB4",1,1,2,,,
+676,228,29,,,,1,300,0,,,,1,1,"LB1, RB1",1,
+835,229,40,"LB1, LB2, LA1, LA2",1,mesial temporal,1,300,1,LG1,"LB1, LB2, LC1, LC2, LC3",1,2,,,,
+808,230,51,"LC1, LC2, LC3, LB1, LB2",1,hippocampus,1,500,1,LB5,"LC1, LC2, LC3, LC4",3,2,,,,
+856,231,36,,,,1,500,0,,,,2,,,,
+796,235,24,"LC1, LC2, LB2, LB3",1,hippocampal tail/body,1,500,1,LA4,"LA1, LA2, LA3, LB1, LB2, LB3, LC1, LC2, LC3, LI1, LI2, LI3",1,1,1,LA1,1,
+885,237,54,,,,1,500,0,,,,,,,,
+861,238,35,"LB1, LB2, LB3, LC1, LC2, LC3",1,hippocampus,1,500,1,LC2,"LB1, LB2, LB3, LC1, LC2, LC3",1,1,2,,,
+847,239,53,,,,1,500,0,,,,,,,,
+877,240,39,,,,1,500,0,,,,,,,,
+890,241,40,,,,1,500,0,,,,,,,,
+860,242,44,,,,1,500,0,,,,,,,,
+893,246,52,,,,1,500,1,LB2,"LA1, LA2, LA3, LA4, LB1, LB2, LB3, LB4, LC1, LC2, LC3, LC4",1,,,,,
+921,247,,,,,1,500,1,RP2,,3,,,,,
+876,249,,,,,1,500,1,RB1,RA1,2,,,,,
+534,250,31,,,,1,500,1,LB3,"LB1, LC1",,,,,,
+864,253,,,,,1,500,1,RB2,"RC1, RC2",3,,,,,
