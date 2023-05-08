@@ -3,7 +3,7 @@
 /RAW_DATA/
 *.csv
 *.xlsx
-
+/stim_env/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
