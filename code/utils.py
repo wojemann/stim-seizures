@@ -75,23 +75,8 @@ def get_iEEG_data(
     select_electrodes=None,
     ignore_electrodes=None,
     outputfile=None,
+    force_pull = False
 ):
-    """_summary_
-
-    Args:
-        username (str): _description_
-        password_bin_file (str): _description_
-        iEEG_filename (str): _description_
-        start_time_usec (float): _description_
-        stop_time_usec (float): _description_
-        select_electrodes (_type_, optional): _description_. Defaults to None.
-        ignore_electrodes (_type_, optional): _description_. Defaults to None.
-        outputfile (_type_, optional): _description_. Defaults to None.
-
-    Returns:
-        _type_: _description_
-    """
-
     start_time_usec = int(start_time_usec)
     stop_time_usec = int(stop_time_usec)
     duration = stop_time_usec - start_time_usec
@@ -112,9 +97,8 @@ def get_iEEG_data(
         except Exception as e:
             time.sleep(1)
             iter += 1
-
     all_channel_labels = clean_labels(all_channel_labels, iEEG_filename)
-
+    
     if select_electrodes is not None:
         if isinstance(select_electrodes[0], Number):
             channel_ids = select_electrodes
@@ -122,7 +106,11 @@ def get_iEEG_data(
         elif isinstance(select_electrodes[0], str):
             select_electrodes = clean_labels(select_electrodes, iEEG_filename)
             if any([i not in all_channel_labels for i in select_electrodes]):
-                raise ValueError("Channel not in iEEG")
+                if force_pull:
+                    select_electrodes = [e for e in select_electrodes
+                                          if e in all_channel_labels]
+                else:
+                    raise ValueError("Channel not in iEEG")
 
             channel_ids = [
                 i for i, e in enumerate(all_channel_labels) if e in select_electrodes
@@ -457,6 +445,29 @@ def label_fix(rid, threshold=0.25, return_old=False, df=None):
         return relabeled_df, brain_df
     return relabeled_df
 
+def electrode_localization(path_to_recon,RID):
+    atropos_metadata = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
+    localization_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
+    localization_metadata = pd.read_csv(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv')
+    def _apply_function(x):
+        # look in labels sorted and see if it contains gray matter
+        # if gray matter is greater than 5% then set label to gray matter
+        x = pd.DataFrame(x).transpose()
+        for i,label in enumerate(x['labels_sorted'].to_numpy()[0]):
+            if (label == 'gray matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
+                x['label'] = label
+                x['index'] = 2
+                continue
+            elif (label == 'white matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
+                x['label'] = label
+                x['index'] = 3
+        
+        return x
+
+    modified_atropos = atropos_metadata.iloc[:,:].apply(lambda x: _apply_function(x), axis = 1)
+    modified_atropos_df = pd.DataFrame(np.squeeze(np.array(modified_atropos.to_list())),columns=atropos_metadata.columns)
+    return modified_atropos_df
+
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
 BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_bids.csv"
@@ -500,8 +511,8 @@ def plot_iEEG_data(
 
     ticklocs = []
     ax.set_xlim(t[0], t[-1])
-    dmin = data.min(skipna=True).min(skipna=True)
-    dmax = data.max(skipna=True).min(skipna=True)
+    dmin = data.min().min()
+    dmax = data.max().min()
 
     if dr is None:
         dr = (dmax - dmin) * 0.8  # Crowd them a bit.
@@ -676,6 +687,7 @@ def artifact_removal(
 
 def _num_wins(xLen, fs, winLen, winDisp):
   return int(((xLen/fs - winLen + winDisp) - ((xLen/fs - winLen + winDisp)%winDisp))/winDisp)
+
 
 def bipolar_montage(data: np.ndarray, ch_types: pd.DataFrame) -> np.ndarray:
     """_summary_
