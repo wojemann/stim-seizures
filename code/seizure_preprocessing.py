@@ -60,10 +60,12 @@ for pt in [pt_list[0]]:
     # Iterate through each seizure in pre-defined csv
     for i_sz,row in seizure_times.iterrows():
         print(f"Seizure number: {i_sz}")
-        if os.path.exists(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.csv")):
-            seizure = pd.read_csv(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.csv"))
+        if os.path.exists(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl")):
+            seizure = pd.read_pickle(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl"))
             fs = seizure.pop('fs').to_numpy()[0]
         else:
+            print(f"Saving seizure number: {i_sz} as pickle file")
+
             seizure,fs = get_iEEG_data(usr,pass_path,
                                         row.IEEGname,
                                         row.start*1e6,
@@ -71,7 +73,7 @@ for pt in [pt_list[0]]:
                                         ch_names,
                                         force_pull = True)
             save_seizure = pd.concat((seizure,pd.DataFrame(np.ones(len(seizure),)*fs,columns=['fs'])),axis = 1)
-            save_seizure.to_csv(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.csv"),index=False)
+            save_seizure.to_pickle(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl"))
 
         # # Preprocessing seizure
         t = np.arange(0,len(seizure)/fs,1/fs)
@@ -79,10 +81,10 @@ for pt in [pt_list[0]]:
         # Filtering
         notch_seizure = notch_filter(seizure.to_numpy(),fs)
         band_seizure = bandpass_filter(notch_seizure,fs)
-        car_seizure = band_seizure - np.mean(band_seizure, axis=0)
-        processed_seizure = pd.DataFrame(car_seizure,columns=seizure.columns)
+        processed_seizure = pd.DataFrame(band_seizure,columns=seizure.columns)
 
         # Artifact Removal
+        
         x = artifact_removal(processed_seizure.to_numpy(),fs,win_size = .05,
                  noise = np.mean(processed_seizure) + 10*np.std(processed_seizure))
         # Account for variation
@@ -107,7 +109,7 @@ for pt in [pt_list[0]]:
                 filled_s = interp_fn(t[fill_idxs])
 
                 # Adding noise to linear interpolation
-                sample_std = np.std(np.concatenate([s[pre_idxs,i_ch],s[post_idxs,i_ch]]))
+                sample_std = np.mean([np.std(s[pre_idxs,i_ch]),np.std(s[post_idxs,i_ch])])
                 interp_samples = np.random.normal(filled_s,np.ones_like(filled_s)*sample_std)
                 smoothed_samples = sc.ndimage.gaussian_filter1d(interp_samples,2)
                 # assigning
@@ -115,8 +117,12 @@ for pt in [pt_list[0]]:
 
         cols = ch_names_clean
         cols.append('fs')
+        # CAR montage
+        s = s - np.mean(s, axis = 0)
         postrejection_seizure = pd.DataFrame(np.concatenate((s,np.ones((len(s,),1))*fs),axis=1), 
                                              columns = cols)
-        postrejection_seizure.to_csv(ospj(raw_datapath,"seizures",f"processed_seizure_{i_sz}_stim_{row.stim}.csv"),index=False)
+
+        # postrejection_seizure = postrejection_seizure - np.mean(postrejection_seizure,axis=0)
+        postrejection_seizure.to_pickle(ospj(raw_datapath,"seizures",f"processed_seizure_{i_sz}_stim_{row.stim}.pkl"))
 
 
