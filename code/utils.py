@@ -775,9 +775,8 @@ def detect_bad_channels(data,fs):
     for ch in bad_std:
         if ch not in bad:
             bad.append(ch)
-    channel_mask_inds = [i for i in which_chs if i not in bad]
-    channel_mask = np.zeros((len(channel_mask_inds),),dtype=bool)
-    channel_mask[channel_mask_inds] = True
+    channel_mask = np.ones((values.shape[1],),dtype=bool)
+    channel_mask[bad] = False
     details['noisy'] = noisy_ch
     details['nans'] = nan_ch
     details['zeros'] = zero_ch
