@@ -90,6 +90,7 @@ for pt in [pt_list[0]]:
         # Account for variation
         artifact_mask = sig.medfilt(x.any(1),5)
         stim_idxs = np.reshape(np.where(np.diff(artifact_mask,prepend=0)),(-1,2))
+        s = processed_seizure.to_numpy()
         for i_ch in range(len(ch_names_clean)):
             for win in stim_idxs:
                 # Define windows
@@ -98,7 +99,6 @@ for pt in [pt_list[0]]:
                 post_idx = win[1] + win_len
 
                 # Interpolation parameters
-                s = processed_seizure.to_numpy()
                 pre_idxs = np.arange(pre_idx,win[0])
                 post_idxs = np.arange(win[1],post_idx)
                 fill_idxs = np.arange(win[0],win[1])
@@ -111,9 +111,8 @@ for pt in [pt_list[0]]:
                 # Adding noise to linear interpolation
                 sample_std = np.mean([np.std(s[pre_idxs,i_ch]),np.std(s[post_idxs,i_ch])])
                 interp_samples = np.random.normal(filled_s,np.ones_like(filled_s)*sample_std)
-                smoothed_samples = sc.ndimage.gaussian_filter1d(interp_samples,2)
                 # assigning
-                s[win[0]:win[1],i_ch] = smoothed_samples
+                s[win[0]:win[1],i_ch] = interp_samples
 
         cols = ch_names_clean
         cols.append('fs')

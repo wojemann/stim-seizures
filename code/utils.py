@@ -546,6 +546,8 @@ def plot_iEEG_data(
             lab.set_color(col)
 
     ax.set_xlabel("Time (s)")
+    if isinstance(data, pd.DataFrame):
+        data = data.to_numpy()
     ax.plot(t, data + ticklocs, color=plot_color, lw=0.4)
 
     return fig, ax
@@ -686,7 +688,7 @@ def artifact_removal(
     return artifacts
 
 
-def detect_bad_channels(data,fs):
+def detect_bad_channels(data,fs,lf_stim = False):
     '''
     data: raw EEG traces after filtering (i think)
     fs: sampling frequency
@@ -728,15 +730,15 @@ def detect_bad_channels(data,fs):
             nan_ch.append(ich)
             continue
         
-        ## Remove channels with zeros in more than half
-        if sum(eeg == 0) > (0.5 * len(eeg)):
+        ## Remove channels with zeros in more than half or a flat line in more than a fifth
+        if sum(eeg == 0) > (0.5 * len(eeg)) or sum(np.diff(eeg) == 0) > (0.2 * len(eeg)):
             bad.append(ich)
             zero_ch.append(ich)
             continue
         
         ## Remove channels with too many above absolute thresh
         if sum(abs(eeg - bl) > abs_thresh) > 10:
-            bad.append(ich)
+            # bad.append(ich)
             high_ch.append(ich)
             continue
 
@@ -774,10 +776,10 @@ def detect_bad_channels(data,fs):
     bad_std = higher_std
     for ch in bad_std:
         if ch not in bad:
-            bad.append(ch)
-    channel_mask_inds = [i for i in which_chs if i not in bad]
-    channel_mask = np.zeros((len(channel_mask_inds),),dtype=bool)
-    channel_mask[channel_mask_inds] = True
+            if ~lf_stim:
+                bad.append(ch)
+    channel_mask = np.ones((values.shape[1],),dtype=bool)
+    channel_mask[bad] = False
     details['noisy'] = noisy_ch
     details['nans'] = nan_ch
     details['zeros'] = zero_ch

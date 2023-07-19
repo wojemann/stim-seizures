@@ -1,4 +1,4 @@
-{"paths": {"RAW_DATA": "/users/wojemann/stim-seizures/RAW_DATA", "iEEG_USR": "wojemann", "iEEG_PWD": "/users/wojemann/woj_ieeglogin.bin"}, 
+{"paths": {"RAW_DATA": "/Users/wojemann/Documents/CNT/stim-seizures/RAW_DATA", "iEEG_USR": "wojemann", "iEEG_PWD": "/Users/wojemann/Documents/CNT/woj_ieeglogin.bin"}, 
 "patients": [
     "HUP224_phaseII",
     "HUP225_phaseII",
