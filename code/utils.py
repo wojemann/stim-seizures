@@ -461,7 +461,6 @@ def electrode_localization(path_to_recon,RID):
             elif (label == 'white matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
                 x['label'] = label
                 x['index'] = 3
-        
         return x
 
     modified_atropos = atropos_metadata.iloc[:,:].apply(lambda x: _apply_function(x), axis = 1)

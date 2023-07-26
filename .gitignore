@@ -4,6 +4,7 @@
 *.csv
 *.xlsx
 /stim_env/
+/stim_env-3_10/
 config.json
 
 # Byte-compiled / optimized / DLL files
