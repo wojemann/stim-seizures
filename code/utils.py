@@ -222,6 +222,9 @@ def clean_labels(channel_li: list, pt: str) -> list:
         i = i.replace("GRID", "G")  # mne has limits on channel name size
         # standardizes channel names
         regex_match = re.match(r"(\D+)(\d+)", i)
+        if pt == "HUP224":
+            if i == "LF7":
+                continue
         if regex_match is None:
             new_channels.append(i)
             continue
@@ -282,15 +285,14 @@ def clean_labels(channel_li: list, pt: str) -> list:
                 lead = "RSO"
             if lead == "GTP":
                 lead = "RG"
-
+        
         new_channels.append(f"{lead}{contact:02d}")
 
         if pt in ("HUP189", "HUP189_phaseII", "sub-RID0520"):
             conv_dict = {"LG": "LGr"}
             if lead in conv_dict:
                 lead = conv_dict[lead]
-
-
+        
     return new_channels
 
 
@@ -711,6 +713,7 @@ def detect_bad_channels(data,fs,lf_stim = False):
     high_ch = []
     nan_ch = []
     zero_ch = []
+    flat_ch = []
     high_var_ch = []
     noisy_ch = []
     all_std = np.empty((len(which_chs),1))
@@ -729,15 +732,21 @@ def detect_bad_channels(data,fs,lf_stim = False):
             nan_ch.append(ich)
             continue
         
-        ## Remove channels with zeros in more than half or a flat line in more than a fifth
-        if sum(eeg == 0) > (0.5 * len(eeg)) or sum(np.diff(eeg) == 0) > (0.2 * len(eeg)):
+        ## Remove channels with zeros in more than half
+        if sum(eeg == 0) > (0.5 * len(eeg)):
             bad.append(ich)
             zero_ch.append(ich)
             continue
+
+        ## Remove channels with extended flat-lining
+        if (sum(np.diff(eeg,1) == 0) > (0.02 * len(eeg))) and (sum(abs(eeg - bl) > abs_thresh) > (0.02 * len(eeg))):
+            bad.append(ich)
+            flat_ch.append(ich)
         
         ## Remove channels with too many above absolute thresh
         if sum(abs(eeg - bl) > abs_thresh) > 10:
-            # bad.append(ich)
+            if not lf_stim:
+                bad.append(ich)
             high_ch.append(ich)
             continue
 
@@ -773,15 +782,16 @@ def detect_bad_channels(data,fs,lf_stim = False):
     median_std = np.nanmedian(all_std)
     higher_std = which_chs[(all_std > (mult_std * median_std)).squeeze()]
     bad_std = higher_std
-    for ch in bad_std:
-        if ch not in bad:
-            if ~lf_stim:
-                bad.append(ch)
+    # for ch in bad_std:
+    #     if ch not in bad:
+    #         if ~lf_stim:
+    #             bad.append(ch)
     channel_mask = np.ones((values.shape[1],),dtype=bool)
     channel_mask[bad] = False
     details['noisy'] = noisy_ch
     details['nans'] = nan_ch
     details['zeros'] = zero_ch
+    details['flat'] = flat_ch
     details['var'] = high_var_ch
     details['higher_std'] = bad_std
     details['high_voltage'] = high_ch

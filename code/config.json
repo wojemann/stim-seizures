@@ -1,4 +1,4 @@
-{"paths": {"RAW_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/RAW_DATA", "iEEG_USR": "wojemann", "iEEG_PWD": "/mnt/leif/littlab/users/wojemann/woj_ieeglogin.bin"}, 
+{"paths": {"META": "/mnt/leif/littlab/users/wojemann/stim-seizures/", "RAW_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/RAW_DATA", "iEEG_USR": "wojemann", "iEEG_PWD": "/mnt/leif/littlab/users/wojemann/woj_ieeglogin.bin"}, 
 "patients": [
     "HUP224_phaseII",
     "HUP225_phaseII",
