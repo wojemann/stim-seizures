@@ -5,6 +5,7 @@ from scipy import signal as sig
 import scipy as sc
 
 # System imports
+from ieeg.auth import Session
 from itertools import compress
 import json
 import os
@@ -18,7 +19,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 with open('/mnt/leif/littlab/users/wojemann/stim-seizures/code/config.json','r') as f:
     CONFIG = json.load(f)
 usr = CONFIG["paths"]["iEEG_USR"]
-pass_path = CONFIG["paths"]["iEEG_PWD"]
+passpath = CONFIG["paths"]["iEEG_PWD"]
 datapath = CONFIG["paths"]["RAW_DATA"]
 metadatapath = CONFIG["paths"]["META"]
 ieeg_list = CONFIG["patients"]
@@ -26,7 +27,7 @@ rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
 pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
 np.random.seed(42)
 
-metadata = pd.read_csv(ospj(metadatapath,'metadata.csv'))
+metadata = pd.read_csv(ospj(metadatapath,'metadata_wchreject.csv'))
 metadata.loc[:,'ieeg_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_phaseII'
 metadata.loc[:,'ccep_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_CCEP'
 
@@ -59,10 +60,20 @@ for pt in pt_list:
     # Cleaning channel labels and dropping bad channels
     ch_names_clean = clean_labels(ch_names,pt)
     dirty_drop_electrodes = metadata[metadata.hupsubjno == int(pt[-3:])]["final_reject_channels"].str.split(',').to_list()[0]
-    if not pd.isna(dirty_drop_electrodes):
+    if isinstance(dirty_drop_electrodes,list):
         final_drop_electrodes = clean_labels(dirty_drop_electrodes,pt)
     else:
         final_drop_electrodes = []
+    
+    # Check intersection of channel names with iEEG.org
+    with open(passpath, "r") as f:
+        pwd = f.read()
+    s = Session(usr, pwd)
+    ds = s.open_dataset(pt+"_phaseII")
+    all_channel_labels = ds.get_channel_labels()
+    # making sure all channels are in iEEG file
+    final_drop_electrodes += [ch for ch in ch_names_clean if ch not in all_channel_labels]
+    # removing any channels that don't meet criteria
     ch_names_clean = [ch for ch in ch_names_clean if ch not in final_drop_electrodes]
 
     # Iterate through each seizure in pre-defined pkl file
@@ -72,8 +83,9 @@ for pt in pt_list:
             buffered_seizure = pd.read_pickle(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl"))
             fs = buffered_seizure.fs.to_numpy()[-1]
             cols = buffered_seizure.columns
-            buffer = buffered_seizure.loc[pd.isna(buffered_seizure.fs),ch_names_clean]
-            seizure = buffered_seizure.loc[~pd.isna(buffered_seizure.fs),ch_names_clean]
+            mask = (pd.isna(buffered_seizure.fs) | buffered_seizure.fs == 0)
+            buffer = buffered_seizure.loc[mask,ch_names_clean]
+            seizure = buffered_seizure.loc[~mask,ch_names_clean]
             t = np.arange(0,len(seizure)/fs,1/fs)
         else:
             print(f"Could not find seizure number {i_sz}. Skipping")
@@ -81,8 +93,13 @@ for pt in pt_list:
 
         # # Preprocessing
         # Rejecting bad channels and update metadata list
-        print("channel rejection")
-        reject_mask,_ = detect_bad_channels(seizure.to_numpy(),fs,row.stim == 1)
+        if row.stim != 1:
+            print("channel rejection")
+            reject_mask,_ = detect_bad_channels(buffer.to_numpy(),fs,row.stim == 1)
+        else:
+            print("stim seizure: no channel rejection")
+            reject_mask = np.ones((seizure.shape[1],),dtype=bool)
+
         processed_seizure = seizure.loc[:,reject_mask]
         ch_names_rejected = list(compress(ch_names_clean,reject_mask))
         final_drop_electrodes += list(compress(ch_names_clean,~reject_mask))
@@ -92,14 +109,23 @@ for pt in pt_list:
 
         
         # Detect segments with artifact
-        x = artifact_removal(processed_seizure.to_numpy(),fs,win_size = .1,
+        art_idxs = artifact_removal(processed_seizure.to_numpy(),fs,win_size = .1,noise=5000)#,
+                    # noise = np.mean(processed_seizure) + 10*np.std(processed_seizure))
+        # Reject channels based on too much artifact
+        art_ch_reject = list(compress(ch_names_rejected,np.sum(art_idxs,axis=0)/len(art_idxs) > 0.1))
+        print(f"rejecting {art_ch_reject} for artifact")
+        ch_names_rejected = [ch for ch in ch_names_rejected if ch not in art_ch_reject]
+        final_drop_electrodes += art_ch_reject
+        processed_seizure = processed_seizure.loc[:,ch_names_rejected]
+        
+        art_idxs = artifact_removal(processed_seizure.to_numpy(),fs,win_size = .1,
                     noise = np.mean(processed_seizure) + 10*np.std(processed_seizure))
         # Propogate artifact indices across all channels
-        artifact_mask = sig.medfilt(x.any(1).astype(int),5)
+        artifact_mask = sig.medfilt(art_idxs.any(1).astype(int),5)
         stim_idxs = np.reshape(np.where(np.diff(artifact_mask,prepend=0)),(-1,2))
         print("artifact rejection")
         s = processed_seizure.to_numpy()
-        for i_ch in range(sum(reject_mask)):
+        for i_ch in range(s.shape[1]):
             for win in stim_idxs:
                 # Define windows
                 win_len = win[1] - win[0]
@@ -112,12 +138,36 @@ for pt in pt_list:
                 fill_idxs = np.arange(win[0],win[1])
 
                 # Interpolation
-                interp_fn = sc.interpolate.interp1d(np.concatenate([t[pre_idxs],t[post_idxs]]),
-                                        np.concatenate([s[pre_idxs,i_ch],s[post_idxs,i_ch]]))
+                # check for edge cases
+                if post_idx >= len(s):
+                        pre_win = s[pre_idxs,i_ch]
+                        pre_t = t[pre_idxs]
+                        post_win = pre_win
+                        post_t = pre_t
+                        interp_fn = lambda x: np.ones((len(x),))*s[win[0],i_ch]
+                else:
+                    if win[0] < win_len:
+                        pre_t = np.arange((pre_idx)/fs,(win[0])/fs,1/fs)
+                        post_t = t[post_idxs]
+                        pre_win = buffer.loc[:,ch_names_clean[i_ch]].to_numpy()[pre_idxs]
+                        post_win = s[post_idxs,i_ch]
+
+                    else:
+                        pre_win = s[pre_idxs,i_ch]
+                        pre_t = t[pre_idxs]
+                        post_win = s[post_idxs,i_ch]
+                        post_t = t[post_idxs]
+                    interp_fn = sc.interpolate.interp1d(np.concatenate([pre_t,post_t]),
+                                            np.concatenate([pre_win,post_win]))
+                # run interpolation
                 filled_s = interp_fn(t[fill_idxs])
 
-                # Adding noise to linear interpolation
-                sample_std = (np.std(s[pre_idxs,i_ch]) + np.std(s[post_idxs,i_ch]))/8
+                # Adding noise to interpolation
+                if post_idx < len(s):
+                    sample_std = (np.std(pre_win) + np.std(s[post_idxs,i_ch]))/8
+                else:
+                    sample_std = np.std(pre_win)
+
                 interp_samples = np.random.normal(filled_s,np.ones_like(filled_s)*sample_std)
                 
                 # assigning interpolated samples to artifact segment

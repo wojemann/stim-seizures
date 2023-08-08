@@ -755,7 +755,8 @@ def detect_bad_channels(data,fs,lf_stim = False):
         thresh = [bl - mult*(bl-pct[0]), bl + mult*(pct[1]-bl)]
         sum_outside = sum(((eeg > thresh[1]) + (eeg < thresh[0])) > 0)
         if sum_outside >= num_above:
-            bad.append(ich)
+            if not lf_stim:
+                bad.append(ich)
             high_var_ch.append(ich)
             continue
         

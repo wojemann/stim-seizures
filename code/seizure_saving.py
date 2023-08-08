@@ -18,7 +18,7 @@ pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
 np.random.seed(42)
 
 # Iterate through each patient
-for pt in ['HUP224']:#pt_list:
+for pt in ['HUP247']:#pt_list:
     print(f"Starting Seizure Preprocessing for {pt}")
     try:
         raw_datapath = ospj(datapath,pt)
@@ -50,7 +50,6 @@ for pt in ['HUP224']:#pt_list:
         # Iterate through each seizure in pre-defined pkl file
         for i_sz,row in seizure_times.iterrows():
             print(f"Saving seizure number: {i_sz}")
-
             seizure,fs = get_iEEG_data(usr,pass_path,
                                         row.IEEGname,
                                         row.start*1e6,
