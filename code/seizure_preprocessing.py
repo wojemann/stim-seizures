@@ -24,7 +24,8 @@ datapath = CONFIG["paths"]["RAW_DATA"]
 metadatapath = CONFIG["paths"]["META"]
 ieeg_list = CONFIG["patients"]
 rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
-pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
+# pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
+pt_list = ["HUP235"]
 np.random.seed(42)
 
 metadata = pd.read_csv(ospj(metadatapath,'metadata_wchreject.csv'))
@@ -78,12 +79,14 @@ for pt in pt_list:
 
     # Iterate through each seizure in pre-defined pkl file
     for i_sz,row in seizure_times.iterrows():
+        # if i_sz != 11:
+        #     continue
         print(f"Seizure number: {i_sz}")
         if os.path.exists(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl")):
             buffered_seizure = pd.read_pickle(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl"))
             fs = buffered_seizure.fs.to_numpy()[-1]
             cols = buffered_seizure.columns
-            mask = (pd.isna(buffered_seizure.fs) | buffered_seizure.fs == 0)
+            mask = (pd.isna(buffered_seizure.fs) | (buffered_seizure.fs == 0) | (np.isnan(buffered_seizure.fs)))
             buffer = buffered_seizure.loc[mask,ch_names_clean]
             seizure = buffered_seizure.loc[~mask,ch_names_clean]
             t = np.arange(0,len(seizure)/fs,1/fs)
@@ -95,7 +98,7 @@ for pt in pt_list:
         # Rejecting bad channels and update metadata list
         if row.stim != 1:
             print("channel rejection")
-            reject_mask,_ = detect_bad_channels(buffer.to_numpy(),fs,row.stim == 1)
+            reject_mask,dets = detect_bad_channels(buffer.to_numpy(),fs,row.stim == 1)
         else:
             print("stim seizure: no channel rejection")
             reject_mask = np.ones((seizure.shape[1],),dtype=bool)
@@ -123,7 +126,7 @@ for pt in pt_list:
         # Propogate artifact indices across all channels
         artifact_mask = sig.medfilt(art_idxs.any(1).astype(int),5)
         stim_idxs = np.reshape(np.where(np.diff(artifact_mask,prepend=0)),(-1,2))
-        print("artifact rejection")
+        print("initiating artifact rejection")
         s = processed_seizure.to_numpy()
         for i_ch in range(s.shape[1]):
             for win in stim_idxs:
