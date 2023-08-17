@@ -896,7 +896,8 @@ def bandpower_fooof(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_s
     Returns:
         np.array: _description_
     """
-    bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
+    # bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
+    bands = {"broad":(1,100)}
 
     nperseg = int(win_size * fs)
     noverlap = int(win_stride * fs)
@@ -957,7 +958,7 @@ def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2,
     bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
 
     nperseg = int(win_size * fs)
-    noverlap = int(win_stride * fs)
+    noverlap = nperseg - int(win_stride * fs)
 
     freq, pxx = welch(x=x, fs=fs, nperseg=nperseg, noverlap=noverlap, axis=1)
     
