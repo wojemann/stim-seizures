@@ -123,6 +123,7 @@ for pt in pt_list:
         
         art_idxs = artifact_removal(processed_seizure.to_numpy(),fs,win_size = .1,
                     noise = np.mean(processed_seizure) + 10*np.std(processed_seizure))
+        
         # Propogate artifact indices across all channels
         artifact_mask = sig.medfilt(art_idxs.any(1).astype(int),5)
         stim_idxs = np.reshape(np.where(np.diff(artifact_mask,prepend=0)),(-1,2))

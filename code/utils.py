@@ -36,7 +36,15 @@ import warnings
 from ieeg.auth import Session
 import pandas as pd
 import numpy as np
+
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
+from scipy.spatial.distance import pdist, squareform
+from scipy.optimize import minimize
+import scipy.signal as sig
+from sklearn.preprocessing import normalize
+from sklearn.decomposition import NMF
+from sklearn.utils import resample
+
 # from scipy.integrate import simpson
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -1055,6 +1063,15 @@ def ft_extract(
 def _ll(x):
     return np.sum(np.abs(np.diff(x)), axis=-1)
 
+def dice_score(x,y):
+    '''
+    This function calculates the dice score between two boolean arrays
+    The dice score is bounded [0,1]
+    x,y - boolan array like
+    '''
+    num = 2*np.sum(x==y)
+    den = len(x)+len(y)
+    return num/den
 
 ######################## Univariate, Spectral Domain ########################
 bands = [
@@ -1186,3 +1203,4 @@ def coherence_bands(
         coher_bands[i_band] = np.mean(cohers[filter_idx], axis=0)
 
     return coher_bands
+
