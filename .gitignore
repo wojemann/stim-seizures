@@ -1,5 +1,6 @@
 # Manual additions
 .DS_Store
+/PROCESSED_DATA/
 /RAW_DATA/
 *.csv
 *.xlsx
