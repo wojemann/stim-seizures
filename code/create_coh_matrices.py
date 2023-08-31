@@ -17,33 +17,35 @@ import sys
 sys.path.append('/users/wojemann/iEEG_processing')
 import mne
 
-metadata = pd.read_csv('../metadata_wchreject.csv')
-# (metadata.cceps_hfs_seizure == 1) | 
-metadata = metadata[(metadata.cceps_run1_sz == 1)].reset_index()
-metadata.loc[:,'ieeg_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_phaseII'
-metadata.loc[:,'ccep_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_CCEP'
-
 # loading config data
-with open('config.json','r') as f:
+# Loading metadata
+with open('/mnt/leif/littlab/users/wojemann/stim-seizures/code/config.json','r') as f:
     CONFIG = json.load(f)
 usr = CONFIG["paths"]["iEEG_USR"]
 passpath = CONFIG["paths"]["iEEG_PWD"]
 datapath = CONFIG["paths"]["RAW_DATA"]
+metadatapath = CONFIG["paths"]["META"]
 prodatapath = CONFIG["paths"]["PROCESSED_DATA"]
 ieeg_list = CONFIG["patients"]
 rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
 pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
 
-alt_pt_list = [pt for pt in pt_list if pt not in ["HUP247"]]
+metadata = pd.read_csv(ospj(metadatapath,'metadata_wchreject.csv'))
+# (metadata.cceps_hfs_seizure == 1) | 
+metadata = metadata[(metadata.cceps_run1_sz == 1)].reset_index()
+metadata.loc[:,'ieeg_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_phaseII'
+metadata.loc[:,'ccep_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_CCEP'
 
+
+# alt_pt_list = [pt for pt in pt_list if pt not in ["HUP247"]]
+alt_pt_list = ["HUP257"]
 for pt in alt_pt_list:
     print(f"Starting analysis for {pt}")
 
     raw_datapath = ospj(datapath,pt)
     processed_datapath = ospj(prodatapath,pt)
-    if not os.path.exists(processed_datapath):
+    if not ospe(processed_datapath):
         os.mkdir(processed_datapath)
-
     dirty_drop_electrodes = metadata[metadata.hupsubjno == int(pt[-3:])]["final_reject_channels"].str.split(',').to_list()[0]
     if isinstance(dirty_drop_electrodes,list):
             final_drop_electrodes = clean_labels(dirty_drop_electrodes,pt)
