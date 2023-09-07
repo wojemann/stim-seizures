@@ -50,6 +50,62 @@ def sammon(X, max_iter=1e10, tol=1e-9):
     res = minimize(stress, init.ravel(), method='L-BFGS-B', tol=tol, options={'maxiter': max_iter, 'disp': True})
     return res.x.reshape((X.shape[0], 2))
 
+def _dissimilarity(C,k):
+    return 1/(2*k)*(2*k - np.sum(np.max(C,axis=0)) - np.sum(np.max(C,axis=1)))
+
+def _ccorr(X,Y):
+            s = X.shape[1]
+            out_mat = np.zeros((s,s))
+            for x_i in range(s):
+                for y_i in range(s):
+                    c = np.corrcoef(X[:,x_i],Y[:,y_i])
+                    out_mat[x_i,y_i] = c[0,1]
+            return out_mat
+
+def stability_nmf(all_coherences,n_bootstrap=100,k_min = 5, k_max = 15):
+    stability_scores = []
+
+    for k in range(k_min, k_max + 1):
+        D_list = []
+        l_list = []
+        for _ in range(int(n_bootstrap)):
+            # Bootstrap resampling
+            bootstrap_data = resample(all_coherences)
+            
+            # Perform NMF on bootstrap sample
+            model = NMF(n_components=k, init='random', random_state=0)
+            model.fit(bootstrap_data)
+            D = model.components_
+            l = model.reconstruction_err_
+
+            # Sort each component by size and store
+            D_list.append(D.T)
+            l_list.append(l)
+            
+        D_array = np.array(D_list)
+        # Calculate dissimilarity across Bootstraps
+       
+        # Cross-corr between columns of two different matrices
+        
+        # calculate dissimilarity for each combination of dictionaries at this k value
+        diss_mat = np.zeros((n_bootstrap,n_bootstrap))
+        for d_i in range(n_bootstrap):
+            for d_j in range(n_bootstrap):
+                C = _ccorr(D_array[d_i],D_array[d_j])
+                diss_mat[d_i,d_j] = _dissimilarity(C,k)
+
+        stability_score = np.mean(diss_mat[~np.eye(n_bootstrap,dtype=bool)])
+        print(k,stability_score)
+        stability_scores.append(stability_score)
+
+    # Identify the number of components that gives the minimum stability score
+    optimal_k = np.argmin(stability_scores) + 1
+    model = NMF(n_components=optimal_k, init='random', random_state=0)
+    W_optimal = model.fit_transform(all_coherences)
+    H_optimal = model.components_
+    recon_cohs = normalize(W_optimal@H_optimal,'l1',axis=1)
+    return optimal_k,recon_cohs
+
 def calculate_coh_timeseries(data,fs=1024,win_len=10,stride=1,factor=2,freq_bands=[(1, 4), (4, 8), (8, 13), (13, 30), (30, 80), (80, 150)], indexed = True):
         
     if indexed:
@@ -58,9 +114,8 @@ def calculate_coh_timeseries(data,fs=1024,win_len=10,stride=1,factor=2,freq_band
     cols = data.columns
     data = sig.decimate(data,factor,axis=0)
     data = pd.DataFrame(data,columns=cols)
-    nfs = fs/factor
+    fs = fs/factor
 
-    # Simulate a DataFrame
     n_channels = data.shape[1]
     m_samples = data.shape[0]
 
@@ -68,8 +123,8 @@ def calculate_coh_timeseries(data,fs=1024,win_len=10,stride=1,factor=2,freq_band
     freq_bands = [(1, 4), (4, 8), (8, 13), (13, 30), (30, 80), (80, 150)]
 
     # Window parameters
-    window_length = int(win_len * nfs)
-    stride = int(stride*nfs)
+    window_length = int(win_len * fs)
+    stride = int(stride*fs)
 
     # Initialize lists to hold results
     all_coherences = []
@@ -96,41 +151,112 @@ def calculate_coh_timeseries(data,fs=1024,win_len=10,stride=1,factor=2,freq_band
     all_coherences = np.array(all_coherences)
     all_coherences = normalize(all_coherences, norm='l1', axis=1)
     print(f"Finished Coh Calc")
-    # Stability-based NMF
-    n_bootstrap = 15  # Number of bootstrap samples
-    max_components = 10  # Maximum number of components to test
-    stability_scores = []
+    optimal_k,recon_cohs = stability_nmf(all_coherences,n_bootstrap=100,k_min = 5, k_max = 20)
 
-    for k in tqdm(range(1, max_components + 1)):
-        W_list = []
+    if indexed:
+        return [index,optimal_k,recon_cohs]
+    else:
+        return [optimal_k,recon_cohs]
+
+def bootstrap_fun(k,bootstrap_data):
+    # Perform NMF on bootstrap sample
+    model = NMF(n_components=k, init='random', random_state=0)
+    model.fit(bootstrap_data)
+    D = model.components_
+    return D
+
+def pqdm_coh(window_data,fs=512,freq_bands=[(1, 4), (4, 8), (8, 13), (13, 30), (30, 80), (80, 150)]):
+    n_channels = window_data.shape[1]
+    coherence_matrix_list = []
+    
+    for low_f, high_f in freq_bands:
+        coherences = []
+        for i in range(n_channels):
+            for j in range(i+1, n_channels):
+                f, Cxy = coherence(window_data.iloc[:, i], window_data.iloc[:, j], fs=fs)
+                avg_coh = np.mean(Cxy[(f >= low_f) & (f <= high_f)])
+                coherences.append(avg_coh)
         
-        for _ in range(int(n_bootstrap)):
-            # Bootstrap resampling
-            bootstrap_data = resample(all_coherences)
-            
-            # Perform NMF on bootstrap sample
-            model = NMF(n_components=k, init='random', random_state=0)
-            W = model.fit_transform(bootstrap_data)
-            
-            # Sort each component by size and store
-            W_list.append(np.sort(W, axis=0))
-            
-        # Calculate stability score across bootstrap samples
-        W_array = np.array(W_list)
-        stability_score = np.mean(np.std(W_array, axis=0) / np.mean(W_array, axis=0))
+        coherence_matrix_list.append(np.array(coherences))
+    
+    concatenated_coherence = np.concatenate(coherence_matrix_list)
+    return concatenated_coherence
+
+def stability_fun(d_1,d_2,k):
+    C = _ccorr(d_1,d_2)
+    return _dissimilarity(C,k)
+
+def pqdm_snmf(all_coherences,k_min=5,k_max=15):
+    # def _dissimilarity(C,k):
+    #     return 1/(2*k)*(2*k - np.sum(np.max(C,axis=0)) - np.sum(np.max(C,axis=1)))
+
+    # def _ccorr(X,Y):
+    #             s = X.shape[1]
+    #             out_mat = np.zeros((s,s))
+    #             for x_i in range(s):
+    #                 for y_i in range(s):
+    #                     c = np.corrcoef(X[:,x_i],Y[:,y_i])
+    #                     out_mat[x_i,y_i] = c[0,1]
+    #             return out_mat
+    
+    n_bootstrap=100
+    
+    stability_scores = []
+    for k in range(k_min,k_max+1):
+        args_dict = [[k,resample(all_coherences)]
+                    for _ in range(n_bootstrap)]
+        D_list=pqdm(args_dict,bootstrap_fun,n_jobs=48,argument_type='args')
+        D_array = np.array(D_list)
+        # calculate dissimilarity for each combination of dictionaries at this k value
+        d_args = []
+        for d_i in range(n_bootstrap):
+            for d_j in range(d_i+1,n_bootstrap):
+                d_args.append([D_array[d_i],D_array[d_j],k])                
+        
+        diss_mat = pqdm(d_args,stability_fun,n_jobs=48,argument_type='args')
+        stability_score = np.mean(diss_mat)
         stability_scores.append(stability_score)
+    
+    return stability_scores
 
-    # Identify the number of components that gives the minimum stability score
-    optimal_k = np.argmin(stability_scores) + 1
+def parallel_coh_timeseries(data,fs=1024,win_len=10,stride=1,factor=2, indexed = True):
+        
+    if indexed:
+        index = data[0]
+        data = data[1]
+    cols = data.columns
+    data = sig.decimate(data,factor,axis=0)
+    data = pd.DataFrame(data,columns=cols)
+    fs = fs/factor
+    m_samples = data.shape[0]
 
-    # Perform NMF with optimal number of components
+    # Window parameters
+    window_length = int(win_len * fs)
+    stride = int(stride*fs)
+
+    # Initialize lists to hold results
+    all_coherences = []
+    
+    # Loop through each window
+    args_dict = [data.iloc[start:start + window_length]
+                for start in 
+                range(0, m_samples - window_length + 1, stride)]
+
+    all_coherences = pqdm(args_dict,pqdm_coh,n_jobs=48)
+    # Convert to NumPy array and L1 normalize
+    all_coherences = np.array(all_coherences)
+    all_coherences = normalize(all_coherences, norm='l1', axis=1)
+    print(f"Finished Coh Calc")
+  
+    # k_min = 5; k_max = 15
+    # stability_scores = pqdm_snmf(all_coherences,k_min,k_max)
+    # optimal_k = np.argmin(stability_scores) + 1
+    optimal_k = 6
     model = NMF(n_components=optimal_k, init='random', random_state=0)
     W_optimal = model.fit_transform(all_coherences)
     H_optimal = model.components_
-
     recon_cohs = normalize(W_optimal@H_optimal,'l1',axis=1)
-
     if indexed:
-        return [index,recon_cohs]
+        return [index,optimal_k,recon_cohs]
     else:
-        return recon_cohs
+        return [optimal_k,recon_cohs]

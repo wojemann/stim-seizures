@@ -40,6 +40,7 @@ import numpy as np
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
+from scipy.integrate import simpson
 import scipy.signal as sig
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import NMF
@@ -1064,14 +1065,9 @@ def _ll(x):
     return np.sum(np.abs(np.diff(x)), axis=-1)
 
 def dice_score(x,y):
-    '''
-    This function calculates the dice score between two boolean arrays
-    The dice score is bounded [0,1]
-    x,y - boolan array like
-    '''
-    num = 2*np.sum(x==y)
-    den = len(x)+len(y)
-    return num/den
+    num = 2*len(np.intersect1d(x,y))
+    denom = len(x)+len(y)
+    return num/denom
 
 ######################## Univariate, Spectral Domain ########################
 bands = [

@@ -37,8 +37,8 @@ metadata.loc[:,'ieeg_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_phaseII'
 metadata.loc[:,'ccep_id'] = 'HUP' + metadata.hupsubjno.apply(str) + '_CCEP'
 
 
-# alt_pt_list = [pt for pt in pt_list if pt not in ["HUP247"]]
-alt_pt_list = ["HUP257"]
+alt_pt_list = [pt for pt in pt_list if pt not in ["HUP247"]]
+# alt_pt_list = ["HUP235"]
 for pt in alt_pt_list:
     print(f"Starting analysis for {pt}")
 
@@ -66,6 +66,14 @@ for pt in alt_pt_list:
         all_seizures.append(seizure)
 
     indexed_seizures = [[i,all_seizures[i]] for i in range(len(all_seizures))]
-    pt_cohs = pqdm(indexed_seizures,calculate_coh_timeseries,n_jobs=32)
-    with open(ospj(prodatapath,f"{pt}_seizure_networks.pkl"),'wb') as f:
+    # pt_cohs = pqdm(indexed_seizures,calculate_coh_timeseries,n_jobs=32)
+    pt_cohs = []
+    for seizure in indexed_seizures:
+        pt_cohs.append(parallel_coh_timeseries(seizure))
+    with open(ospj(prodatapath,pt,f"{pt}_seizure_networks.pkl"),'wb') as f:
         pickle.dump({"seizure_list": seizure_list, "seizure_networks": pt_cohs},f)
+
+
+    # pt_cohs = calculate_coh_timeseries(indexed_seizures[0])
+    # with open(ospj(prodatapath,pt,f"script_test_networks.pkl"),'wb') as f:
+    #     pickle.dump(pt_cohs,f)
