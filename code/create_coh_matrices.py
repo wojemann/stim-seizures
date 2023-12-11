@@ -73,6 +73,7 @@ for pt in alt_pt_list:
     with open(ospj(prodatapath,pt,f"{pt}_seizure_networks.pkl"),'wb') as f:
         pickle.dump({"seizure_list": seizure_list, "seizure_networks": pt_cohs},f)
 
+    
 
     # pt_cohs = calculate_coh_timeseries(indexed_seizures[0])
     # with open(ospj(prodatapath,pt,f"script_test_networks.pkl"),'wb') as f:
