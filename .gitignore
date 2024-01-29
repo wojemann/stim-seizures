@@ -1,4 +1,5 @@
 # Manual additions
+._*
 .DS_Store
 /PROCESSED_DATA/
 /RAW_DATA/
