@@ -56,6 +56,7 @@ for pt in pt_list:
         electrode_localizations.to_csv(ospj(raw_datapath,"electrode_localizations.csv"))
     else:    
         electrode_localizations = pd.read_csv(ospj(raw_datapath,"electrode_localizations.csv"))
+    # Take channels that are only white or gray matter
     ch_names = electrode_localizations[(electrode_localizations['index'] == 2) | (electrode_localizations['index'] == 3)]["name"].to_numpy()
     
     # Cleaning channel labels and dropping bad channels

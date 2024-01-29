@@ -18,7 +18,7 @@ pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
 np.random.seed(42)
 
 # Iterate through each patient
-for pt in ['HUP247']:#pt_list:
+for pt in pt_list:
     print(f"Starting Seizure Preprocessing for {pt}")
     try:
         raw_datapath = ospj(datapath,pt)
