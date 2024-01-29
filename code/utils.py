@@ -36,7 +36,16 @@ import warnings
 from ieeg.auth import Session
 import pandas as pd
 import numpy as np
+
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
+from scipy.spatial.distance import pdist, squareform
+from scipy.optimize import minimize
+from scipy.integrate import simpson
+import scipy.signal as sig
+from sklearn.preprocessing import normalize
+from sklearn.decomposition import NMF
+from sklearn.utils import resample
+
 # from scipy.integrate import simpson
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -222,6 +231,9 @@ def clean_labels(channel_li: list, pt: str) -> list:
         i = i.replace("GRID", "G")  # mne has limits on channel name size
         # standardizes channel names
         regex_match = re.match(r"(\D+)(\d+)", i)
+        if pt == "HUP224":
+            if i == "LF7":
+                continue
         if regex_match is None:
             new_channels.append(i)
             continue
@@ -282,15 +294,14 @@ def clean_labels(channel_li: list, pt: str) -> list:
                 lead = "RSO"
             if lead == "GTP":
                 lead = "RG"
-
+        
         new_channels.append(f"{lead}{contact:02d}")
 
         if pt in ("HUP189", "HUP189_phaseII", "sub-RID0520"):
             conv_dict = {"LG": "LGr"}
             if lead in conv_dict:
                 lead = conv_dict[lead]
-
-
+        
     return new_channels
 
 
@@ -461,7 +472,6 @@ def electrode_localization(path_to_recon,RID):
             elif (label == 'white matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
                 x['label'] = label
                 x['index'] = 3
-        
         return x
 
     modified_atropos = atropos_metadata.iloc[:,:].apply(lambda x: _apply_function(x), axis = 1)
@@ -712,6 +722,7 @@ def detect_bad_channels(data,fs,lf_stim = False):
     high_ch = []
     nan_ch = []
     zero_ch = []
+    flat_ch = []
     high_var_ch = []
     noisy_ch = []
     all_std = np.empty((len(which_chs),1))
@@ -730,15 +741,21 @@ def detect_bad_channels(data,fs,lf_stim = False):
             nan_ch.append(ich)
             continue
         
-        ## Remove channels with zeros in more than half or a flat line in more than a fifth
-        if sum(eeg == 0) > (0.5 * len(eeg)) or sum(np.diff(eeg) == 0) > (0.2 * len(eeg)):
+        ## Remove channels with zeros in more than half
+        if sum(eeg == 0) > (0.5 * len(eeg)):
             bad.append(ich)
             zero_ch.append(ich)
             continue
+
+        ## Remove channels with extended flat-lining
+        if (sum(np.diff(eeg,1) == 0) > (0.02 * len(eeg))) and (sum(abs(eeg - bl) > abs_thresh) > (0.02 * len(eeg))):
+            bad.append(ich)
+            flat_ch.append(ich)
         
         ## Remove channels with too many above absolute thresh
         if sum(abs(eeg - bl) > abs_thresh) > 10:
-            # bad.append(ich)
+            if not lf_stim:
+                bad.append(ich)
             high_ch.append(ich)
             continue
 
@@ -747,7 +764,8 @@ def detect_bad_channels(data,fs,lf_stim = False):
         thresh = [bl - mult*(bl-pct[0]), bl + mult*(pct[1]-bl)]
         sum_outside = sum(((eeg > thresh[1]) + (eeg < thresh[0])) > 0)
         if sum_outside >= num_above:
-            bad.append(ich)
+            if not lf_stim:
+                bad.append(ich)
             high_var_ch.append(ich)
             continue
         
@@ -774,15 +792,16 @@ def detect_bad_channels(data,fs,lf_stim = False):
     median_std = np.nanmedian(all_std)
     higher_std = which_chs[(all_std > (mult_std * median_std)).squeeze()]
     bad_std = higher_std
-    for ch in bad_std:
-        if ch not in bad:
-            if ~lf_stim:
-                bad.append(ch)
+    # for ch in bad_std:
+    #     if ch not in bad:
+    #         if ~lf_stim:
+    #             bad.append(ch)
     channel_mask = np.ones((values.shape[1],),dtype=bool)
     channel_mask[bad] = False
     details['noisy'] = noisy_ch
     details['nans'] = nan_ch
     details['zeros'] = zero_ch
+    details['flat'] = flat_ch
     details['var'] = high_var_ch
     details['higher_std'] = bad_std
     details['high_voltage'] = high_ch
@@ -886,7 +905,8 @@ def bandpower_fooof(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_s
     Returns:
         np.array: _description_
     """
-    bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
+    # bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
+    bands = {"broad":(1,100)}
 
     nperseg = int(win_size * fs)
     noverlap = int(win_stride * fs)
@@ -947,7 +967,7 @@ def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2,
     bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
 
     nperseg = int(win_size * fs)
-    noverlap = int(win_stride * fs)
+    noverlap = nperseg - int(win_stride * fs)
 
     freq, pxx = welch(x=x, fs=fs, nperseg=nperseg, noverlap=noverlap, axis=1)
     
@@ -1044,6 +1064,10 @@ def ft_extract(
 def _ll(x):
     return np.sum(np.abs(np.diff(x)), axis=-1)
 
+def dice_score(x,y):
+    num = 2*len(np.intersect1d(x,y))
+    denom = len(x)+len(y)
+    return num/denom
 
 ######################## Univariate, Spectral Domain ########################
 bands = [
@@ -1175,3 +1199,4 @@ def coherence_bands(
         coher_bands[i_band] = np.mean(cohers[filter_idx], axis=0)
 
     return coher_bands
+

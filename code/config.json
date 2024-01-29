@@ -1,26 +1,163 @@
-{"paths": {"RAW_DATA": "/Users/wojemann/Documents/CNT/stim-seizures/RAW_DATA", "iEEG_USR": "wojemann", "iEEG_PWD": "/Users/wojemann/Documents/CNT/woj_ieeglogin.bin"}, 
+{"paths": {"META": "/mnt/leif/littlab/users/wojemann/stim-seizures/", 
+"RAW_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/RAW_DATA", 
+"PROCESSED_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/PROCESSED_DATA",
+"iEEG_USR": "wojemann", 
+"iEEG_PWD": "/mnt/leif/littlab/users/wojemann/woj_ieeglogin.bin"}, 
 "patients": [
-    "HUP224_phaseII",
-    "HUP225_phaseII",
-    "HUP229_phaseII", 
-    "HUP230_phaseII", 
-    "HUP235_phaseII", 
-    "HUP238_phaseII", 
-    "HUP246_phaseII", 
-    "HUP247_phaseII",
-    "HUP249_phaseII",
-    "HUP250_phaseII",
-    "HUP253_phaseII",
-    "HUP224_CCEP",
-    "HUP225_CCEP",
-    "HUP229_CCEP",
-    "HUP230_CCEP",
-    "HUP235_CCEP",
-    "HUP238_CCEP",
-    "HUP246_CCEP",
-    "HUP247_CCEP",
-    "HUP249_CCEP",
-    "HUP250_CCEP",
-    "HUP253_CCEP"
+    {"ptID": "HUP224",
+    "ieeg_ids": ["HUP224_phaseII","HUP224_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP225",
+    "ieeg_ids": ["HUP225_phaseII","HUP225_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP230",
+    "ieeg_ids": ["HUP230_phaseII","HUP230_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP235",
+    "ieeg_ids": ["HUP235_phaseII","HUP235_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP238",
+    "ieeg_ids": ["HUP238_phaseII","HUP238_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP246",
+    "ieeg_ids": ["HUP246_phaseII","HUP246_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP247",
+    "ieeg_ids": ["HUP247_phaseII","HUP247_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP249",
+    "ieeg_ids": ["HUP249_phaseII","HUP249_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP250",
+    "ieeg_ids": ["HUP250_phaseII","HUP250_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP253",
+    "ieeg_ids": ["HUP253_phaseII","HUP253_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP257",
+    "ieeg_ids": ["HUP257_phaseII","HUP257_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "HUP263",
+    "ieeg_ids": ["HUP263_phaseII","HUP263_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP170",
+    "ieeg_ids": ["HUP170_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP172",
+    "ieeg_ids": ["HUP172_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP180",
+    "ieeg_ids": ["HUP180_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP181",
+    "ieeg_ids": ["HUP181_phaseII_D01","HUP181_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP186",
+    "ieeg_ids": ["HUP186_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP188",
+    "ieeg_ids": ["HUP188_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP193",
+    "ieeg_ids": ["HUP193_phaseII_D01","HUP193_phaseII_D02","HUP193_phaseII_D03"],
+    "lf_stim": 1,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP194",
+    "ieeg_ids": ["HUP194_phaseII_D01","HUP194_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP197",
+    "ieeg_ids": ["HUP197_phaseII_D01","HUP197_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP201",
+    "ieeg_ids": ["HUP201_phaseII_D01","HUP201_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP202",
+    "ieeg_ids": ["HUP202_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP205",
+    "ieeg_ids": ["HUP205_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP207",
+    "ieeg_ids": ["HUP207_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP210",
+    "ieeg_ids": ["HUP210_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP211",
+    "ieeg_ids": ["HUP211_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP213",
+    "ieeg_ids": ["HUP213_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP214",
+    "ieeg_ids": ["HUP214_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP216",
+    "ieeg_ids": ["HUP216_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    },
+    {"ptID": "HUP218",
+    "ieeg_ids": ["HUP218_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1
+    }
 ],
-"ignore": [false, false, true, true, true, true, false, false, false, true, true, false, false, false, true, true]}
+"ignore": [false, false, 1, 1, 1, 1, false, false, false, 1, 1, false, false, false, 1, 1]}

@@ -13,7 +13,6 @@ from sklearn.preprocessing import normalize
 import os
 from os.path import join as ospj
 from os.path import exists as ospe
-import pathlib
 from tqdm import tqdm
 from utils import *
 import sys
