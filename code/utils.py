@@ -237,6 +237,9 @@ def clean_labels(channel_li: list, pt: str) -> list:
         if regex_match is None:
             new_channels.append(i)
             continue
+
+        if re.search('Cz|Fz|C3|C4|EKG',i):
+            continue
         lead = regex_match.group(1).replace("EEG", "").strip()
         contact = int(regex_match.group(2))
 
@@ -301,7 +304,7 @@ def clean_labels(channel_li: list, pt: str) -> list:
             conv_dict = {"LG": "LGr"}
             if lead in conv_dict:
                 lead = conv_dict[lead]
-        
+                
     return new_channels
 
 
@@ -373,12 +376,12 @@ def check_channel_types(ch_list, threshold=15):
             "PZ",
             "T",
         ]:
-            ch_df.at[group.index, "type"] = "eeg"
+            ch_df.loc[group.index.to_list(), "type"] = "eeg"
             continue
         if len(group) > threshold:
-            ch_df.at[group.index, "type"] = "ecog"
+            ch_df.loc[group.index.to_list(), "type"] = "ecog"
         else:
-            ch_df.at[group.index, "type"] = "seeg"
+            ch_df.loc[group.index.to_list(), "type"] = "seeg"
     return ch_df
 
 
