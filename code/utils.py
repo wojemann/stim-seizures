@@ -238,8 +238,8 @@ def clean_labels(channel_li: list, pt: str) -> list:
             new_channels.append(i)
             continue
 
-        if re.search('Cz|Fz|C3|C4|EKG',i):
-            continue
+        # if re.search('Cz|Fz|C3|C4|EKG',i):
+        #     continue
         lead = regex_match.group(1).replace("EEG", "").strip()
         contact = int(regex_match.group(2))
 
