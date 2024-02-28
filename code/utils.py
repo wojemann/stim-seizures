@@ -859,6 +859,28 @@ def bipolar_montage(data: np.ndarray, ch_types: pd.DataFrame) -> np.ndarray:
 
     return new_data, new_ch_types
 
+def ar_one(data):
+    """
+    The ar_one function fits an AR(1) model to the data and retains the residual as
+    the pre-whitened data
+    Parameters
+    ----------
+        data: ndarray, shape (T, N)
+            Input signal with T samples over N variates
+    Returns
+    -------
+        data_white: ndarray, shape (T, N)
+            Whitened signal with reduced autocorrelative structure
+    """
+    # Retrieve data attributes
+    n_samp, n_chan = data.shape
+    # Apply AR(1)
+    data_white = np.zeros((n_samp-1, n_chan))
+    for i in range(n_chan):
+        win_x = np.vstack((data[:-1, i], np.ones(n_samp-1)))
+        w = np.linalg.lstsq(win_x.T, data[1:, i], rcond=None)[0]
+        data_white[:, i] = data[1:, i] - (data[:-1, i]*w[0] + w[1])
+    return data_white
 
 ################################################ Feature Extraction ################################################
 
@@ -870,7 +892,7 @@ def _timeseries_to_wins(
     """_summary_
 
     Args:
-        data (pd.DataFrame): _description_
+        data (np.ndarray)
         fs (float): _description_
         win_size (int, optional): _description_. Defaults to 2.
         win_stride (int, optional): _description_. Defaults to 1.
