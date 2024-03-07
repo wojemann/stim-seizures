@@ -5,32 +5,20 @@ import json
 import os
 from os.path import join as ospj
 from utils import *
-import scipy as sc
 
-# Loading CONFIG
-with open('config.json','r') as f:
+# Loading metadata
+with open('/mnt/leif/littlab/users/wojemann/stim-seizures/code/config.json','r') as f:
     CONFIG = json.load(f)
 usr = CONFIG["paths"]["iEEG_USR"]
-passpath = CONFIG["paths"]["iEEG_PWD"]
+pass_path = CONFIG["paths"]["iEEG_PWD"]
 datapath = CONFIG["paths"]["RAW_DATA"]
-figpath = CONFIG["paths"]["FIGURES"]
-pt_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID')
+ieeg_list = CONFIG["patients"]
 rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
-pt_list = pt_table.ptID.to_numpy()
-lf_pt_list = pt_list[pt_table.lf_stim==1]
-
+pt_list = np.unique(np.array([i.split("_")[0] for i in ieeg_list]))
 np.random.seed(42)
 
-# downsampling factor
-def get_factor(fs,target=256):
-    if fs%target != 0:
-        print("FS not divisible by target, will perform \
-              integer division and new fs may not match target")
-    return fs // target
-TARGET = 256
-
 # Iterate through each patient
-for pt in lf_pt_list:
+for pt in pt_list:
     print(f"Starting Seizure Preprocessing for {pt}")
     try:
         raw_datapath = ospj(datapath,pt)
@@ -51,7 +39,7 @@ for pt in lf_pt_list:
                             'module3/')
             electrode_localizations = electrode_localization(recon_path,rid)
             electrode_localizations.to_csv(ospj(raw_datapath,"electrode_localizations.csv"))
-        else:
+        else:    
             electrode_localizations = pd.read_csv(ospj(raw_datapath,"electrode_localizations.csv"))
         ch_names = electrode_localizations[(electrode_localizations['index'] == 2) | (electrode_localizations['index'] == 3)]["name"].to_numpy()
 
@@ -62,15 +50,23 @@ for pt in lf_pt_list:
         # Iterate through each seizure in pre-defined pkl file
         for i_sz,row in seizure_times.iterrows():
             print(f"Saving seizure number: {i_sz}")
-            seizure,fs = get_iEEG_data(usr,passpath,
+            seizure,fs = get_iEEG_data(usr,pass_path,
                                         row.IEEGname,
                                         row.start*1e6,
                                         row.end*1e6,
                                         ch_names,
                                         force_pull = True)
-            factor = get_factor(fs,TARGET)
-            fsd = fs//factor
-            seizure_ds = pd.DataFrame(sc.signal.decimate(seizure.to_numpy(),FACTOR,axis=0),columns=ch_names)           
-            seizure_ds.to_pickle(ospj(raw_datapath,"seizures",f"{fsd}_seizure_{i_sz}_stim_{row.stim}.pkl"))
+            save_seizure = pd.concat((seizure,pd.DataFrame(np.ones(len(seizure),)*fs,columns=['fs'])),axis = 1)
+            # adding buffer for pre-ictal analysis of onset
+            print(f"Adding buffer for seizure number: {i_sz}")
+            temp,_ = get_iEEG_data(usr,pass_path,
+                                    row.IEEGname,(row.start-15)*1e6,
+                                    row.start*1e6,
+                                    ch_names,
+                                    force_pull=True)
+            temp_fs = pd.concat((temp,pd.DataFrame(np.zeros(len(temp),),columns=['fs'])),axis = 1)
+            
+            buffered_seizure = pd.concat((temp_fs,save_seizure),axis=0)
+            buffered_seizure.to_pickle(ospj(raw_datapath,"seizures",f"seizure_{i_sz}_stim_{row.stim}.pkl"))
     except:
         print(f"unable to save seizures for {pt}")
