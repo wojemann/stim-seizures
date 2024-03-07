@@ -70,8 +70,13 @@
     "lf_stim": 1,
     "hf_stim": 0
     },
+    {"ptID": "HUP267",
+    "ieeg_ids": ["HUP267_phaseII","HUP267_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
     {"ptID": "HUP273",
-    "ieeg_ids": ["HUP273_phaseII","HUP273_CCEP"],
+    "ieeg_ids": ["HUP273_phaseII","HUP273b_phaseII","HUP273_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0
     },
