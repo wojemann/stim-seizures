@@ -22,12 +22,12 @@ lf_pt_list = pt_list[pt_table.lf_stim==1]
 np.random.seed(42)
 
 # downsampling factor
-def get_factor(fs,target=256):
+def get_factor(fs,target=512):
     if fs%target != 0:
         print("FS not divisible by target, will perform \
               integer division and new fs may not match target")
     return fs // target
-TARGET = 256
+TARGET = 512
 
 # Iterate through each patient
 for pt in lf_pt_list:
