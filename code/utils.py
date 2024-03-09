@@ -812,7 +812,7 @@ def detect_bad_channels(data,fs,lf_stim = False):
     return channel_mask,details
 
 
-def _num_wins(xLen, fs, winLen, winDisp):
+def num_wins(xLen, fs, winLen, winDisp):
   return int(((xLen/fs - winLen + winDisp) - ((xLen/fs - winLen + winDisp)%winDisp))/winDisp)
 
 
@@ -882,6 +882,27 @@ def ar_one(data):
         data_white[:, i] = data[1:, i] - (data[:-1, i]*w[0] + w[1])
     return data_white
 
+def preprocess_presave(data,fs,montage='bipolar',factor=4):
+    # This function implements preprocessing steps for seizure detection
+    chs = data.columns.to_list()
+    ch_df = check_channel_types(chs)
+    # Montage
+    if montage == 'bipolar':
+        data_bp_np,bp_ch_df = bipolar_montage(data.to_numpy().T,ch_df)
+        bp_ch = bp_ch_df.name.to_numpy()
+    elif montage == 'car':
+        data_bp_np = (data.to_numpy().T - np.mean(data.to_numpy(),1))
+        bp_ch = chs
+    # Bandpass filtering
+    b,a = sc.signal.butter(4,[3,58],btype='bandpass',fs = fs)
+    data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
+    # Down sampling
+    data_bpd = sc.signal.decimate(data_bp_filt,factor).T
+    fsd = fs/factor
+    data_white = ar_one(data_bpd)
+    data_white_df = pd.DataFrame(data_white,columns = bp_ch)
+    return data_white_df,fsd
+
 ################################################ Feature Extraction ################################################
 
 
@@ -910,6 +931,18 @@ def _timeseries_to_wins(
     )
     return data[:, idx]
 
+def MovingWinClips(x,fs,winLen,winDisp):
+  # calculate number of windows and initialize receiver
+  nWins = num_wins(x,fs,winLen,winDisp)
+  samples = np.empty((nWins,winLen*fs))
+  # create window indices - these windows are left aligned
+  idxs = np.array([(winDisp*fs*i,(winLen+winDisp*i)*fs)\
+                   for i in range(nWins)],dtype=int)
+  # apply feature function to each channel
+  for i in range(idxs.shape[0]):
+    samples[i,:] = x[idxs[i,0]:idxs[i,1]]
+  
+  return samples
 
 def ll(x):
     return np.sum(np.abs(np.diff(x)), axis=-1)
@@ -1224,4 +1257,10 @@ def coherence_bands(
         coher_bands[i_band] = np.mean(cohers[filter_idx], axis=0)
 
     return coher_bands
+
+########################### Workspace Preparation ###########################
+def set_seed(seed):
+  np.random.seed(seed)
+  torch.manual_seed(seed)
+  random.seed(seed)
 
