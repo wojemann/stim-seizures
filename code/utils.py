@@ -31,11 +31,13 @@ import itertools
 from glob import glob
 import logging
 import warnings
+import random
 
 # nonstandard imports
 from ieeg.auth import Session
 import pandas as pd
 import numpy as np
+import torch
 
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
@@ -933,7 +935,7 @@ def _timeseries_to_wins(
 
 def MovingWinClips(x,fs,winLen,winDisp):
   # calculate number of windows and initialize receiver
-  nWins = num_wins(x,fs,winLen,winDisp)
+  nWins = num_wins(len(x),fs,winLen,winDisp)
   samples = np.empty((nWins,winLen*fs))
   # create window indices - these windows are left aligned
   idxs = np.array([(winDisp*fs*i,(winLen+winDisp*i)*fs)\

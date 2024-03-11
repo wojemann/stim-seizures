@@ -18,7 +18,6 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 # Imports for deep learning
-import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -43,7 +42,7 @@ def prepare_segment(data, fs = 256,train_win = 12, pred_win = 1, w_size = 1, w_s
     train_win = 12
     pred_win = 1
     j = fs-(train_win+pred_win)+1
-    nwins = num_wins(data_np[:,0],fs,w_size,w_stride)
+    nwins = num_wins(len(data_np[:,0]),fs,w_size,w_stride)
     data_mat = torch.zeros((nwins,j,(train_win+pred_win),len(data_ch)))
     for k in range(len(data_ch)): # Iterating through channels
         samples = MovingWinClips(data_np[:,k],fs,1,0.5)
@@ -62,7 +61,7 @@ def prepare_segment(data, fs = 256,train_win = 12, pred_win = 1, w_size = 1, w_s
         return input_data, target_data
 
 # predict_sz returns formatted data windows as distributions of MSE loss for each clip
-def predict_sz(model, input_data, target_data,batch_size=1):
+def predict_sz(model, input_data, target_data,batch_size=1,ccheck=False):
     dataset = TensorDataset(input_data,target_data)
     dataloader = DataLoader(dataset,batch_size=batch_size,shuffle=False)
     ccheck = torch.cuda.is_available()
@@ -71,7 +70,7 @@ def predict_sz(model, input_data, target_data,batch_size=1):
     with torch.no_grad():
         model.eval()
         mse_distribution = []
-        for inputs, targets in tqdm(dataloader):
+        for inputs, targets in dataloader:
             if ccheck:
                 inputs = inputs.cuda()
                 targets = targets.cuda()
@@ -82,7 +81,7 @@ def predict_sz(model, input_data, target_data,batch_size=1):
 
 # repair_data turns the clip x sample output of predict_sz back into a channel x window time multivariate time series
 def repair_data(outputs,data,fs=256,train_win=12,pred_win=1,w_size=1,w_stride=.5):
-    nwins = num_wins(data.to_numpy()[:,0],fs,w_size,w_stride)
+    nwins = num_wins(len(data.to_numpy()[:,0]),fs,w_size,w_stride)
     nchannels = data.shape[1]
     repaired = outputs.reshape((nwins,fs-(train_win + pred_win)+1,nchannels))
     return repaired
@@ -111,7 +110,7 @@ class LRModel(nn.Module):
         return out
 
 # Train the model instance using provided data
-def train_model(model,dataloader,criterion,optimizer,num_epochs=100):
+def train_model(model,dataloader,criterion,optimizer,num_epochs=100,ccheck=False):
         # Training loop
         num_epochs = 100
         for epoch in range(num_epochs):
@@ -127,6 +126,17 @@ def train_model(model,dataloader,criterion,optimizer,num_epochs=100):
             if epoch % 10 == 9:
                 print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
 
+def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
+                fig,ax = plt.subplots(figsize=(48,24))
+                plt.imshow(mat)
+                plt.axvline(120,linestyle = '--',color = 'white')
+                plt.xlabel('Time (s)')
+                plt.yticks(np.arange(len(yticks)),yticks,rotation=0,fontsize=10)
+                plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-60)
+                if xlim is not None:
+                    plt.xlim(xlim)
+                plt.savefig(fig_save_path)
+
 # Prepare univariate features for classification by 0-1 normalizing excluding outliers
 def scale_normalized(data,m=5):
     # takes in data and returns a flattened array with outliers removed based on distribution of entire tensor
@@ -140,7 +150,7 @@ def scale_normalized(data,m=5):
     return data_norm
 
 def load_config(config_path):
-    with open('config.json','r') as f:
+    with open(config_path,'r') as f:
         CONFIG = json.load(f)
     usr = CONFIG["paths"]["iEEG_USR"]
     passpath = CONFIG["paths"]["iEEG_PWD"]
@@ -151,6 +161,7 @@ def load_config(config_path):
     rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
     pt_list = patient_table.ptID.to_numpy()
     return usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list
+
 def main():
     # This pipeline assumes that the seizures have already been saved following naming conventions
     # Please run XXXX.py to modify seizures for seizure detection. Future iterations may contain
@@ -162,16 +173,20 @@ def main():
 
     set_seed(5210)
 
-    _,_,datapath,prodatapath,figpath,patient_table,pt_list = load_config('config.json')
+    _,_,datapath,prodatapath,figpath,_,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
 
     all_seizure_times = pd.read_csv(ospj(prodatapath,"consensus_annots.csv"))
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
+    all_ueo_preds = {"Seizure_ID": [],
+                     "patient": [],
+                     "clinician": [],
+                     "UEO_ch": []}
     # Iterating through each patient that we have annotations for
     for pt in all_seizure_times.patient.unique():
+        print(f"Starting seizure detection pipeline for {pt}")
         seizure_times = all_seizure_times[all_seizure_times.patient == pt]
-
         raw_datapath = ospj(datapath,pt)
         if not os.path.exists(ospj(raw_datapath, "seizures")):
             os.mkdir(ospj(raw_datapath, "seizures"))
@@ -190,32 +205,39 @@ def main():
         hidden_size = 10
         output_size = input_data.shape[2]
 
+        # Check for cuda
+        ccheck = torch.cuda.is_available()
+
         # Initialize the model
         model = LSTMModel(input_size, hidden_size, output_size)
-        print(model)
-        ccheck = torch.cuda.is_available()
         if ccheck:
             model.cuda()
+        
         # Define loss function and optimizer
         criterion = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=0.01)
 
         # Train the model, this will just modify the model object, no returns
-        train_model(model,dataloader,criterion,optimizer)
+        print("Training patient specific model")
+        train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
 
         # Creating classification thresholds
+        print("Generating loss decision threshold")
         input_data,target_data = prepare_segment(inter)
-        inter_outputs = predict_sz(model,input_data,target_data,batch_size=400)
+        inter_outputs = predict_sz(model,input_data,target_data,batch_size=400,ccheck=ccheck)
         thresholds = np.percentile(inter_outputs,95,0)
 
         # Iterating through each seizure for that patient
         for _,sz_row in seizure_times.iterrows():
             i_sz = int(float(sz_row.Seizure_ID[7:]))
+
+            print(f"Generating predictions for seizure {i_sz}")
+
             seizure = pd.read_pickle(ospj(raw_datapath,"seizures",f"det{fs}_seizure_{i_sz}_stim_{int(sz_row.stim)}_{montage}.pkl"))
             mask,_ = detect_bad_channels(seizure.to_numpy(),fs)
 
             input_data, target_data, win_times = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
-            outputs = predict_sz(model,input_data,target_data,400)
+            outputs = predict_sz(model,input_data,target_data,400,ccheck=ccheck)
             seizure_mat = repair_data(outputs,seizure)
 
             # Getting raw predicted loss values for each window
@@ -229,7 +251,7 @@ def main():
             sz_clf[~mask,:] = 0 # real channel rejection
 
             # Normalizing values of the loss
-            norm_sz_vals = scale_normalized(np.mean(np.log(seizure_mat),1).T)
+            # norm_sz_vals = scale_normalized(np.mean(np.log(seizure_mat),1).T)
             # Creating smoothed sz values
             sz_vals = sc.ndimage.uniform_filter1d(raw_sz_vals,10,axis=1)
             # Creating probabilities by temporally smoothing classification
@@ -245,13 +267,38 @@ def main():
             sz_clf[ch_sorting[first_zero:],:] = 0
             sz_prob[ch_sorting[first_zero:],:] = 0
 
-            sz_clf_final = sz_prob > 0.5
+            final_thresh = 0.5
+            sz_clf_final = sz_prob > final_thresh
             first_seizing_index = np.argmax(sz_clf_final.any(axis=0))
             mdl_ueo_idx = np.where(np.sum(sz_clf_final[:, first_seizing_index:first_seizing_index + 3], axis=1) > 0)[0]
             mdl_ueo_ch_bp = seizure.columns.to_numpy()[mdl_ueo_idx]
             mdl_ueo_ch = [s.split("-")[0] for s in mdl_ueo_ch_bp]
-
-            def plot_and_save_detection(mat,win_times,)
+            all_ueo_preds["UEO_ch"].append(mdl_ueo_ch)
+            all_ueo_preds["clinician"].append("MDL")
+            all_ueo_preds["patient"].append(pt)
+            all_ueo_preds["Seizure_ID"].append(sz_row.Seizure_ID)
+            # (115,400)
+            # In this section plot and save all of the plots that we generate in this section.
+            if ~ospe(ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model)):
+                os.mkdir(ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model))
+            plot_and_save_detection(sz_vals[ch_sorting[first_zero],:],
+                                    win_times,
+                                    seizure.columns[ch_sorting[first_zero]],
+                                    ospj(figpath,pt,model,"loss_vals.png"))
+            plot_and_save_detection(sz_prob[ch_sorting[first_zero],:],
+                                    win_times,
+                                    seizure.columns[ch_sorting[first_zero]],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model,"sz_prob.png"))
+            plot_and_save_detection(sz_clf[ch_sorting[first_zero],:],
+                                    win_times,
+                                    seizure.columns[ch_sorting[first_zero]],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model,"sz_clf.png"),xlim=(115,400))
+            plot_and_save_detection(sz_clf_final[ch_sorting[first_zero],:],
+                                    win_times,
+                                    seizure.columns[ch_sorting[first_zero]],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model,f"sz_clf_final_{final_thresh}.png"))
+    all_ueo_preds_df = pd.DataFrame(all_ueo_preds)
+    all_ueo_preds_df.to_csv(ospj(prodatapath,"annotation_demo_mdl.csv"),index=False)
             
 
 
