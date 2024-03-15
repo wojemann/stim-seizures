@@ -3,6 +3,7 @@
 .DS_Store
 /PROCESSED_DATA/
 /RAW_DATA/
+/figures/
 *.csv
 *.xlsx
 /stim_env/

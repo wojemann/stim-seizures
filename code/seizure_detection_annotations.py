@@ -167,10 +167,6 @@ def main():
     # Please run XXXX.py to modify seizures for seizure detection. Future iterations may contain
     # preprocessing code to pull from a standardized saved seizure
 
-    inter_times = {"HUP235": 307651,
-                   "HUP238": 100011,
-                   "HUP246": 100000}
-
     set_seed(5210)
 
     _,_,datapath,prodatapath,figpath,_,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
@@ -193,6 +189,8 @@ def main():
         
         fs = 256
         inter = pd.read_pickle(ospj(raw_datapath,"seizures",f"det{fs}_interictal_{montage}.pkl"))
+        mask,info = detect_bad_channels(inter.to_numpy(),fs)
+        inter = inter.drop(inter.columns[~mask],axis=1)
 
         # Prepare input and target data for the LSTM
         input_data,target_data = prepare_segment(inter)
@@ -202,7 +200,7 @@ def main():
 
         # Instantiate the model
         input_size = input_data.shape[2]
-        hidden_size = 10
+        hidden_size = 100
         output_size = input_data.shape[2]
 
         # Check for cuda
@@ -229,12 +227,12 @@ def main():
 
         # Iterating through each seizure for that patient
         for _,sz_row in seizure_times.iterrows():
-            i_sz = int(float(sz_row.Seizure_ID[7:]))
+            i_sz = int(float(sz_row.Seizure_ID[-3:]))
 
             print(f"Generating predictions for seizure {i_sz}")
 
             seizure = pd.read_pickle(ospj(raw_datapath,"seizures",f"det{fs}_seizure_{i_sz}_stim_{int(sz_row.stim)}_{montage}.pkl"))
-            mask,_ = detect_bad_channels(seizure.to_numpy(),fs)
+            seizure = seizure.drop(seizure.columns[~mask],axis=1)
 
             input_data, target_data, win_times = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
             outputs = predict_sz(model,input_data,target_data,400,ccheck=ccheck)
@@ -246,9 +244,8 @@ def main():
             sz_clf = (raw_sz_vals.T > np.log(thresholds)).T
             # Dropping channels with too many positive detections (bad channels)
             # This should be replaced with actual channel rejection
-            rejection_mask = np.sum(sz_clf[120],axis=1) > (sz_clf.shape[1]*3/5)
+            rejection_mask = np.sum(sz_clf[:,:120],axis=1) > 80
             sz_clf[rejection_mask,:] = 0 # fake channel rejection
-            sz_clf[~mask,:] = 0 # real channel rejection
 
             # Normalizing values of the loss
             # norm_sz_vals = scale_normalized(np.mean(np.log(seizure_mat),1).T)
@@ -279,26 +276,26 @@ def main():
             all_ueo_preds["Seizure_ID"].append(sz_row.Seizure_ID)
             # (115,400)
             # In this section plot and save all of the plots that we generate in this section.
-            if ~ospe(ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model)):
-                os.mkdir(ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model))
-            plot_and_save_detection(sz_vals[ch_sorting[first_zero],:],
+            if ~ospe(ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,"LSTM")):
+                os.makedirs(ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,"LSTM"),exist_ok=True)
+            plot_and_save_detection(sz_vals[ch_sorting,:],
                                     win_times,
-                                    seizure.columns[ch_sorting[first_zero]],
-                                    ospj(figpath,pt,model,"loss_vals.png"))
-            plot_and_save_detection(sz_prob[ch_sorting[first_zero],:],
+                                    seizure.columns[ch_sorting],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,"LSTM",f"{montage}_loss_vals.png"))
+            plot_and_save_detection(sz_prob[ch_sorting,:],
                                     win_times,
-                                    seizure.columns[ch_sorting[first_zero]],
-                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model,"sz_prob.png"))
-            plot_and_save_detection(sz_clf[ch_sorting[first_zero],:],
+                                    seizure.columns[ch_sorting],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,"LSTM",f"{montage}_sz_prob.png"))
+            plot_and_save_detection(sz_clf[ch_sorting,:],
                                     win_times,
-                                    seizure.columns[ch_sorting[first_zero]],
-                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model,"sz_clf.png"),xlim=(115,400))
-            plot_and_save_detection(sz_clf_final[ch_sorting[first_zero],:],
+                                    seizure.columns[ch_sorting],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,"LSTM",f"{montage}_sz_clf.png"),xlim=(115,400))
+            plot_and_save_detection(sz_clf_final[ch_sorting,:],
                                     win_times,
-                                    seizure.columns[ch_sorting[first_zero]],
-                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,model,f"sz_clf_final_{final_thresh}.png"))
+                                    seizure.columns[ch_sorting],
+                                    ospj(figpath,pt,"annotation_demo",sz_row.Seizure_ID,"LSTM",f"{montage}_sz_clf_final_{final_thresh}.png"))
     all_ueo_preds_df = pd.DataFrame(all_ueo_preds)
-    all_ueo_preds_df.to_csv(ospj(prodatapath,"annotation_demo_mdl.csv"),index=False)
+    all_ueo_preds_df.to_csv(ospj(prodatapath,f"annotation_demo_algorithm_{montage}.csv"),index=False)
             
 
 

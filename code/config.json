@@ -60,6 +60,11 @@
     "lf_stim": 1,
     "hf_stim": 0
     },
+    {"ptID": "HUP261",
+    "ieeg_ids": ["HUP261_phaseII","HUP261_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
     {"ptID": "HUP263",
     "ieeg_ids": ["HUP263_phaseII","HUP263_CCEP"],
     "lf_stim": 1,
@@ -79,5 +84,76 @@
     "ieeg_ids": ["HUP273_phaseII","HUP273b_phaseII","HUP273_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0
-    }]
+    },
+    {"ptID": "CHOP005",
+    "ieeg_ids": ["CHOPCCEP_005"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP010",
+    "ieeg_ids": ["CHOPCCEP_010"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP015",
+    "ieeg_ids": ["CHOPCCEP_015"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP024",
+    "ieeg_ids": ["CHOPCCEP_024"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP026",
+    "ieeg_ids": ["CHOPCCEP_026"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP028",
+    "ieeg_ids": ["CHOPCCEP_028"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP035",
+    "ieeg_ids": ["CHOPCCEP_035"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP036",
+    "ieeg_ids": ["CHOPCCEP_036"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP037",
+    "ieeg_ids": ["CHOPCCEP_037"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP038",
+    "ieeg_ids": ["CHOPCCEP_038"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP041",
+    "ieeg_ids": ["CHOPCCEP_041"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP044",
+    "ieeg_ids": ["CHOPCCEP_044"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP045",
+    "ieeg_ids": ["CHOPCCEP_045"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    },
+    {"ptID": "CHOP046",
+    "ieeg_ids": ["CHOPCCEP_046"],
+    "lf_stim": 1,
+    "hf_stim": 0
+    }
+]
 }
