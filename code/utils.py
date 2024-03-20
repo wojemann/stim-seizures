@@ -44,6 +44,7 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
 from scipy.integrate import simpson
 import scipy.signal as sig
+import scipy as sc
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import NMF
 from sklearn.utils import resample
@@ -898,6 +899,8 @@ def preprocess_presave(data,fs,montage='bipolar',factor=4):
     # Bandpass filtering
     b,a = sc.signal.butter(4,[3,58],btype='bandpass',fs = fs)
     data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
+    # data_bp_filt = notch_filter(data_bp_np,fs)
+    # data_bp_filt = bandpass_filter(data_bp_filt,fs,hi=100)
     # Down sampling
     data_bpd = sc.signal.decimate(data_bp_filt,factor).T
     fsd = fs/factor

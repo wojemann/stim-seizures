@@ -189,7 +189,7 @@ def main():
         
         fs = 256
         inter = pd.read_pickle(ospj(raw_datapath,"seizures",f"det{fs}_interictal_{montage}.pkl"))
-        mask,info = detect_bad_channels(inter.to_numpy(),fs)
+        mask,_ = detect_bad_channels(inter.to_numpy(),fs)
         inter = inter.drop(inter.columns[~mask],axis=1)
 
         # Prepare input and target data for the LSTM
@@ -200,7 +200,7 @@ def main():
 
         # Instantiate the model
         input_size = input_data.shape[2]
-        hidden_size = 100
+        hidden_size = 10
         output_size = input_data.shape[2]
 
         # Check for cuda
@@ -227,7 +227,7 @@ def main():
 
         # Iterating through each seizure for that patient
         for _,sz_row in seizure_times.iterrows():
-            i_sz = int(float(sz_row.Seizure_ID[-3:]))
+            i_sz = int(float(sz_row.Seizure_ID.split('_')[-1]))
 
             print(f"Generating predictions for seizure {i_sz}")
 
