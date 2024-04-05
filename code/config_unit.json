@@ -1,0 +1,13 @@
+{"paths": {"META": "/mnt/leif/littlab/users/wojemann/stim-seizures/", 
+"RAW_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/RAW_DATA", 
+"PROCESSED_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/PROCESSED_DATA",
+"FIGURES": "/mnt/leif/littlab/users/wojemann/stim-seizures/figures",
+"iEEG_USR": "wojemann", 
+"iEEG_PWD": "/mnt/leif/littlab/users/wojemann/woj_ieeglogin.bin"}, 
+"patients": [
+    {"ptID": "HUP257",
+    "ieeg_ids": ["HUP257_phaseII","HUP257_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 0}
+]
+}

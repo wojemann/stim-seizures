@@ -149,19 +149,6 @@ def scale_normalized(data,m=5):
     data_norm[data_norm > 1] = 1
     return data_norm
 
-def load_config(config_path):
-    with open(config_path,'r') as f:
-        CONFIG = json.load(f)
-    usr = CONFIG["paths"]["iEEG_USR"]
-    passpath = CONFIG["paths"]["iEEG_PWD"]
-    datapath = CONFIG["paths"]["RAW_DATA"]
-    prodatapath = CONFIG["paths"]["PROCESSED_DATA"]
-    figpath = CONFIG["paths"]["FIGURES"]
-    patient_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID')
-    rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
-    pt_list = patient_table.ptID.to_numpy()
-    return usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list
-
 def main():
     # This pipeline assumes that the seizures have already been saved following naming conventions
     # Please run XXXX.py to modify seizures for seizure detection. Future iterations may contain
@@ -247,8 +234,6 @@ def main():
             rejection_mask = np.sum(sz_clf[:,:120],axis=1) > 80
             sz_clf[rejection_mask,:] = 0 # fake channel rejection
 
-            # Normalizing values of the loss
-            # norm_sz_vals = scale_normalized(np.mean(np.log(seizure_mat),1).T)
             # Creating smoothed sz values
             sz_vals = sc.ndimage.uniform_filter1d(raw_sz_vals,10,axis=1)
             # Creating probabilities by temporally smoothing classification

@@ -1,0 +1,192 @@
+### SAVING SEIZURES AS PICKLE FILES TO LEIF
+import numpy as np
+import pandas as pd
+import json
+import os
+from os.path import join as ospj
+from utils import *
+import scipy as sc
+
+from tqdm import tqdm
+
+
+# BIDS imports
+import mne
+from mne_bids import BIDSPath, write_raw_bids
+
+
+# Loading CONFIG
+usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
+
+# Setting Seed
+np.random.seed(171999)
+
+TARGET = 512
+OVERWRITE = True
+
+# Setting up BIDS targets
+bids_path_kwargs = {
+    "root": ospj(datapath,'BIDS'),
+    "datatype": "ieeg",
+    "extension": ".edf",
+    "suffix": "ieeg",
+    "task": "ictal",
+    "session": "clinical01",
+}
+bids_path = BIDSPath(**bids_path_kwargs)
+ieeg_kwargs = {
+    "username": usr,
+    "password_bin_file": passpath,
+}
+
+# Loading in all seizure data
+seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information - LF_seizure_annotation.csv"))
+seizures_df.dropna(axis=0,how='all',inplace=True)
+seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)
+seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)
+seizures_df['approximate_onset'].fillna(seizures_df['Other_onset_description'],inplace=True)
+adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
+seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
+seizures_df['IEEGID'] = seizures_df.groupby(['Patient','IEEGname']).ngroup()
+
+for pt, group in tqdm(
+    seizures_df.groupby('Patient'),
+    total=seizures_df.Patient.nunique(),
+    desc="Patients",
+    position=0,
+):
+    # sort by start time
+    group = group.sort_values("approximate_onset")
+    group.reset_index(inplace=True, drop=True)
+    for idx, row in tqdm(
+        group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
+    ):
+        task_names = ['ictal','stim']
+        onset = row.approximate_onset
+        offset = row.end
+        # get bids path
+        sz_clip_bids_path = bids_path.copy().update(
+            subject=pt,
+            run=int(row["IEEGID"]),
+            task=f"{task_names[int(row.stim)]}{int(onset)}",
+        )
+
+        # check if the file already exists, if so, skip
+        if sz_clip_bids_path.fpath.exists() and not OVERWRITE:
+            continue
+
+        # HUP097 does not have an end time, so we'll just use 60 seconds from the start
+        if np.isnan(offset):
+            offset = onset + 60
+
+        # get the duration and clip it to 5 mins
+        duration = offset-onset
+
+        data, fs = get_iEEG_data(
+            iEEG_filename=row["IEEGname"],
+            start_time_usec=(onset - 60) * 1e6, # start 30 seconds before the seizure
+            stop_time_usec=(offset + 60) * 1e6,
+            **ieeg_kwargs,
+        )
+
+        # channels with flat line may not save proprely, so we'll drop them
+        data = data[data.columns[data.min(axis=0) != data.max(axis=0)]]
+
+        # clean the labels
+        data.columns = clean_labels(data.columns, pt=pt)
+
+        # if there are duplicate labels, keep the first one in the table
+        data = data.loc[:, ~data.columns.duplicated()]
+        # get the channel types
+        ch_types = check_channel_types(list(data.columns))
+        ch_types.set_index("name", inplace=True, drop=True)
+
+        # convert nan to 0
+        data.fillna(0, inplace=True)
+
+        # minimal preprocessing
+        data_np = data.to_numpy().T
+
+        data_np_notch = notch_filter(data_np,fs)
+        data_np_filt = bandpass_filter(data_np_notch,fs,order=4,lo=1,hi=100)
+        factor = get_factor(fs,TARGET)
+        data_np_ds = sc.signal.decimate(data_np_filt,factor)
+        fs /= factor
+
+
+        # save the data
+        # run is the iEEG file number
+        # task is ictal with the start time in seconds appended
+        data_info = mne.create_info(
+            ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
+        )
+        raw = mne.io.RawArray(
+            data.to_numpy().T / 1e6,  # mne needs data in volts,
+            data_info,
+            verbose=False,
+        )
+        raw.set_channel_types(ch_types.type)
+        annots = mne.Annotations(
+            onset=[60], # seizure starts 60 seconds after the start of the clip
+            duration=[duration],
+            description=task_names[int(row.stim)],
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            raw.set_annotations(annots)
+
+            write_raw_bids(
+                raw,
+                sz_clip_bids_path,
+                overwrite=OVERWRITE,
+                verbose=False,
+                allow_preload=True,
+                format="EDF",
+            )
+
+# # Iterate through each patient
+# for pt in lf_pt_list:
+#     print(f"Starting Seizure Preprocessing for {pt}")
+#     try:
+#         raw_datapath = ospj(datapath,pt)
+#         # load dataframe of seizure times
+#         seizure_times = pd.read_csv(ospj(raw_datapath,f"seizure_times_{pt}.csv"))
+#         # load electrode information
+#         if not os.path.exists(ospj(raw_datapath, "electrode_localizations.csv")):
+#             hup_no = pt[3:]
+#             rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
+#             recon_path = ospj('/mnt','leif','littlab','data',
+#                             'Human_Data','CNT_iEEG_BIDS',
+#                             f'sub-RID0{rid}','derivatives','ieeg_recon',
+#                             'module3/')
+#             if not os.path.exists(recon_path):
+#                 recon_path =  ospj('/mnt','leif','littlab','data',
+#                             'Human_Data','recon','BIDS_penn',
+#                             f'sub-RID0{rid}','derivatives','ieeg_recon',
+#                             'module3/')
+#             electrode_localizations = electrode_localization(recon_path,rid)
+#             electrode_localizations.to_csv(ospj(raw_datapath,"electrode_localizations.csv"))
+#         else:
+#             electrode_localizations = pd.read_csv(ospj(raw_datapath,"electrode_localizations.csv"))
+#         ch_names = electrode_localizations[(electrode_localizations['index'] == 2) | (electrode_localizations['index'] == 3)]["name"].to_numpy()
+
+#         # loading seizures
+#         if not os.path.exists(ospj(raw_datapath, "seizures")):
+#             os.mkdir(ospj(raw_datapath, "seizures"))
+        
+#         # Iterate through each seizure in pre-defined pkl file
+#         for i_sz,row in seizure_times.iterrows():
+#             print(f"Saving seizure number: {i_sz}")
+#             seizure,fs = get_iEEG_data(usr,passpath,
+#                                         row.IEEGname,
+#                                         row.start*1e6,
+#                                         row.end*1e6,
+#                                         ch_names,
+#                                         force_pull = True)
+#             factor = get_factor(fs,TARGET)
+#             fsd = fs//factor
+#             seizure_ds = pd.DataFrame(sc.signal.decimate(seizure.to_numpy(),FACTOR,axis=0),columns=ch_names)           
+#             seizure_ds.to_pickle(ospj(raw_datapath,"seizures",f"{fsd}_seizure_{i_sz}_stim_{row.stim}.pkl"))
+#     except:
+#         print(f"unable to save seizures for {pt}")

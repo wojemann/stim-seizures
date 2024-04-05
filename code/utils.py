@@ -32,6 +32,7 @@ from glob import glob
 import logging
 import warnings
 import random
+import json
 
 # nonstandard imports
 from ieeg.auth import Session
@@ -362,7 +363,7 @@ def check_channel_types(ch_list, threshold=15):
     ch_df = pd.DataFrame(ch_df)
     for lead, group in ch_df.groupby("lead"):
         if lead in ["ECG", "EKG"]:
-            ch_df.at[group.index, "type"] = "ecg"
+            ch_df.loc[group.index, "type"] = "ecg"
             continue
         if lead in [
             "C",
@@ -908,6 +909,12 @@ def preprocess_presave(data,fs,montage='bipolar',factor=4):
     data_white_df = pd.DataFrame(data_white,columns = bp_ch)
     return data_white_df,fsd
 
+def get_factor(fs,target=512):
+    if fs%target != 0:
+        print("FS not divisible by target, will perform \
+              integer division and new fs may not match target")
+    return int(fs // target)
+
 ################################################ Feature Extraction ################################################
 
 
@@ -1269,3 +1276,15 @@ def set_seed(seed):
   torch.manual_seed(seed)
   random.seed(seed)
 
+def load_config(config_path):
+    with open(config_path,'r') as f:
+        CONFIG = json.load(f)
+    usr = CONFIG["paths"]["iEEG_USR"]
+    passpath = CONFIG["paths"]["iEEG_PWD"]
+    datapath = CONFIG["paths"]["RAW_DATA"]
+    prodatapath = CONFIG["paths"]["PROCESSED_DATA"]
+    figpath = CONFIG["paths"]["FIGURES"]
+    patient_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID')
+    rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
+    pt_list = patient_table.ptID.to_numpy()
+    return usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list
