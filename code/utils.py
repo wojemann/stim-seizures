@@ -915,6 +915,18 @@ def get_factor(fs,target=512):
               integer division and new fs may not match target")
     return int(fs // target)
 
+def remove_scalp_electrodes(raw_labels):
+    scalp_list = ['Cz','Fz','Pz',
+                  'A01','A02',
+                  'C03','C04',
+                  'F03','F04','F07','F08',
+                  'Fp01','Fp02',
+                  'O01','O01',
+                  'P03','P04',
+                  'T03','T04','T05','T06',
+                  'EKG01','EKG02',
+                  'ROC','LOC']
+    return [l for l in raw_labels if l not in scalp_list]
 ################################################ Feature Extraction ################################################
 
 
@@ -1284,7 +1296,7 @@ def load_config(config_path):
     datapath = CONFIG["paths"]["RAW_DATA"]
     prodatapath = CONFIG["paths"]["PROCESSED_DATA"]
     figpath = CONFIG["paths"]["FIGURES"]
-    patient_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID')
+    patient_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID').reset_index(drop=True)
     rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
     pt_list = patient_table.ptID.to_numpy()
     return usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list

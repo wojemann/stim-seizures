@@ -16,13 +16,13 @@ from mne_bids import BIDSPath, write_raw_bids
 
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
+usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
 
 # Setting Seed
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 # Setting up BIDS targets
 bids_path_kwargs = {
@@ -45,9 +45,11 @@ seizures_df.dropna(axis=0,how='all',inplace=True)
 seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)
 seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)
 seizures_df['approximate_onset'].fillna(seizures_df['Other_onset_description'],inplace=True)
-adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
-seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
-seizures_df['IEEGID'] = seizures_df.groupby(['Patient','IEEGname']).ngroup()
+# drop HF stim induced seizures
+seizures_df = seizures_df[seizures_df.stim != 2]
+# adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
+# seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
+seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
 
 for pt, group in tqdm(
     seizures_df.groupby('Patient'),
@@ -55,8 +57,14 @@ for pt, group in tqdm(
     desc="Patients",
     position=0,
 ):
+    if pt == 'HUP267':
+        continue
+    ieegid = group.groupby('IEEGname').ngroup().astype(int)
+    seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
+    group.loc[ieegid.index,'IEEGID'] = ieegid
+    
     # sort by start time
-    group = group.sort_values("approximate_onset")
+    group = group.sort_values(["IEEGID","approximate_onset"])
     group.reset_index(inplace=True, drop=True)
     for idx, row in tqdm(
         group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
@@ -108,7 +116,7 @@ for pt, group in tqdm(
         data_np = data.to_numpy().T
 
         data_np_notch = notch_filter(data_np,fs)
-        data_np_filt = bandpass_filter(data_np_notch,fs,order=4,lo=1,hi=100)
+        data_np_filt = bandpass_filter(data_np_notch,fs,order=3,lo=1,hi=100)
         factor = get_factor(fs,TARGET)
         data_np_ds = sc.signal.decimate(data_np_filt,factor)
         fs /= factor
@@ -144,7 +152,7 @@ for pt, group in tqdm(
                 allow_preload=True,
                 format="EDF",
             )
-
+seizures_df.to_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 # # Iterate through each patient
 # for pt in lf_pt_list:
 #     print(f"Starting Seizure Preprocessing for {pt}")
