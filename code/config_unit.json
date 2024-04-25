@@ -8,6 +8,8 @@
     {"ptID": "HUP257",
     "ieeg_ids": ["HUP257_phaseII","HUP257_CCEP"],
     "lf_stim": 1,
-    "hf_stim": 0}
+    "hf_stim": 0,
+    "interictal_training": ["HUP257_phaseII",15600]
+}
 ]
 }

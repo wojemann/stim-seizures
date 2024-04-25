@@ -34,6 +34,11 @@ import warnings
 import random
 import json
 
+# data IO imports
+import mne
+import mne_bids
+from mne_bids import BIDSPath, read_raw_bids
+
 # nonstandard imports
 from ieeg.auth import Session
 import pandas as pd
@@ -502,6 +507,29 @@ def get_pt_coords(pt):
     )[0]
     return pd.read_csv(coords_path, index_col=0)
 
+def get_data_from_bids(root,subject,task_key,run=None,return_path=False,verbose=0):
+    # setting subject
+    all_subjects = mne_bids.get_entity_vals(root,'subject')
+    ignore_subjects = [s for s in all_subjects if s != subject]
+
+    # extracting task
+    task_list = mne_bids.get_entity_vals(root, 'task', ignore_subjects=ignore_subjects)
+    task = [t for t in task_list if task_key in t][0]
+    ignore_tasks = [t for t in task_list if t != task]
+
+    # Should be just one run per task
+    if run is None:
+        run = mne_bids.get_entity_vals(root, 'run', 
+                                    ignore_tasks = ignore_tasks,
+                                    ignore_subjects=ignore_subjects)[0]
+    
+    bidspath = BIDSPath(root=root,subject=subject,task=task,run=run,session='clinical01')
+    data_raw = read_raw_bids(bidspath,verbose=verbose)
+    data_df = data_raw.to_data_frame()
+    fs = 1/data_df.time.diff().mode().item()
+    if return_path:
+        return data_df.drop('time',axis=1), int(fs), root, subject, task, run
+    return data_df.drop('time',axis=1), int(fs)
 
 ################################################ Plotting and Visualization ################################################
 def plot_iEEG_data(
@@ -886,7 +914,7 @@ def ar_one(data):
         data_white[:, i] = data[1:, i] - (data[:-1, i]*w[0] + w[1])
     return data_white
 
-def preprocess_presave(data,fs,montage='bipolar',factor=4):
+def preprocess_for_detection(data,fs,montage='bipolar',factor=2):
     # This function implements preprocessing steps for seizure detection
     chs = data.columns.to_list()
     ch_df = check_channel_types(chs)
@@ -904,7 +932,7 @@ def preprocess_presave(data,fs,montage='bipolar',factor=4):
     # data_bp_filt = bandpass_filter(data_bp_filt,fs,hi=100)
     # Down sampling
     data_bpd = sc.signal.decimate(data_bp_filt,factor).T
-    fsd = fs/factor
+    fsd = int(fs/factor)
     data_white = ar_one(data_bpd)
     data_white_df = pd.DataFrame(data_white,columns = bp_ch)
     return data_white_df,fsd
@@ -925,7 +953,8 @@ def remove_scalp_electrodes(raw_labels):
                   'P03','P04',
                   'T03','T04','T05','T06',
                   'EKG01','EKG02',
-                  'ROC','LOC']
+                  'ROC','LOC',
+                  'EMG01','EMG02']
     return [l for l in raw_labels if l not in scalp_list]
 ################################################ Feature Extraction ################################################
 

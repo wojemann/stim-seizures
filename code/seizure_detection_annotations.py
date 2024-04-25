@@ -150,9 +150,8 @@ def scale_normalized(data,m=5):
     return data_norm
 
 def main():
-    # This pipeline assumes that the seizures have already been saved following naming conventions
-    # Please run XXXX.py to modify seizures for seizure detection. Future iterations may contain
-    # preprocessing code to pull from a standardized saved seizure
+    # This pipeline assumes that the seizures have already been saved following BIDS file structure
+    # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
 
     set_seed(5210)
 
