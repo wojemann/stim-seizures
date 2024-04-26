@@ -57,7 +57,7 @@ for pt, group in tqdm(
     desc="Patients",
     position=0,
 ):
-    if pt == 'HUP267':
+    if len(patient_table[patient_table.ptID == pt].interictal_training.item()) < 2:
         continue
     ieegid = group.groupby('IEEGname').ngroup().astype(int)
     seizures_df.loc[ieegid.index,'IEEGID'] = ieegid

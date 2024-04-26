@@ -81,7 +81,7 @@
     "ieeg_ids": ["HUP261_phaseII","HUP261_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["HUP261_phaseII",3356.07]
     },
     {"ptID": "HUP263",
     "ieeg_ids": ["HUP263_phaseII","HUP263_CCEP"],
@@ -102,7 +102,7 @@
     "interictal_training": []
     },
     {"ptID": "HUP273",
-    "ieeg_ids": ["HUP273_phaseII","HUP273b_phaseII","HUP273_CCEP"],
+    "ieeg_ids": ["HUP273_phaseII","HUP273b_phaseII","HUP273c_phaseII","HUP273_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0,
     "interictal_training": []
