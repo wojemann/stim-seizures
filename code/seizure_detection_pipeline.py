@@ -31,7 +31,7 @@ from utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
 
-OVERWRITE = False
+OVERWRITE = True
 FACTOR = 2
 TRAIN_WIN = 12
 PRED_WIN = 1
@@ -184,7 +184,7 @@ def main():
 
         # Instantiate the model
         input_size = input_data.shape[2]
-        hidden_size = 100
+        hidden_size = 10
         output_size = input_data.shape[2]
 
         # Check for cuda
@@ -215,26 +215,28 @@ def main():
         for i,(_,sz_row) in enumerate(qbar):
             set_seed(1071999)
             qbar.set_description(f"Processing seizure {i}")
+            # Load in seizure and metadata for BIDS path
             seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+            # Filter out bad channels from interictal clip
             seizure = seizure[chn_labels]
             seizure = seizure.drop(seizure.columns[~mask],axis=1)
+            # Perform overwrite check
             prob_path = f"probability_matrix_mdl-{model}_fs-{int(fs_raw/FACTOR)}_montage-{montage}_task-{task}_run-{run}.pkl"
             if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                  continue
+            # Preprocess seizure for seizure detection task
             seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,factor=FACTOR)
-
             input_data, target_data,time_wins = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
+            # Generate seizure detection predictions for each window
             outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
             seizure_mat = repair_data(outputs,seizure)
-
             # Getting raw predicted loss values for each window
             raw_sz_vals = np.mean(np.log(seizure_mat),1).T
             # Creating classifications
             sz_clf = (raw_sz_vals.T > np.log(thresholds)).T
             # Dropping channels with too many positive detections (bad channels)
-            # This should be replaced with actual channel rejection
-            rejection_mask = np.sum(sz_clf[:,:120],axis=1) > 60
-            sz_clf[rejection_mask,:] = 0 # fake channel rejection
+            # rejection_mask = np.sum(sz_clf[:,:120],axis=1) > 60
+            # sz_clf[rejection_mask,:] = 0 # fake channel rejection
 
             # Creating probabilities by temporally smoothing classification
             sz_prob = sc.ndimage.uniform_filter1d(sz_clf.astype(float),10,axis=1)

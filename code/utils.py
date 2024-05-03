@@ -926,7 +926,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',factor=2):
         data_bp_np = (data.to_numpy().T - np.mean(data.to_numpy(),1))
         bp_ch = chs
     # Bandpass filtering
-    b,a = sc.signal.butter(4,[3,58],btype='bandpass',fs = fs)
+    b,a = sc.signal.butter(4,[3,55],btype='bandpass',fs = fs)
     data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
     # data_bp_filt = notch_filter(data_bp_np,fs)
     # data_bp_filt = bandpass_filter(data_bp_filt,fs,hi=100)
@@ -949,7 +949,7 @@ def remove_scalp_electrodes(raw_labels):
                   'C03','C04',
                   'F03','F04','F07','F08',
                   'Fp01','Fp02',
-                  'O01','O01',
+                  'O01','O02',
                   'P03','P04',
                   'T03','T04','T05','T06',
                   'EKG01','EKG02',
@@ -1177,6 +1177,10 @@ def _ll(x):
 
 def dice_score(x,y):
     num = 2*len(np.intersect1d(x,y))
+    if len(x.shape) < 1:
+        x = np.array([str(x)])
+    if len(y.shape) < 1:
+        y = np.array([str(y)])
     denom = len(x)+len(y)
     return num/denom
 

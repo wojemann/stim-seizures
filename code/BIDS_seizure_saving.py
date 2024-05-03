@@ -1,4 +1,4 @@
-### SAVING SEIZURES AS PICKLE FILES TO LEIF
+### SAVING SEIZURES AS BIDS FORMAT TO LEIF
 import numpy as np
 import pandas as pd
 import json
@@ -57,8 +57,9 @@ for pt, group in tqdm(
     desc="Patients",
     position=0,
 ):
-    if len(patient_table[patient_table.ptID == pt].interictal_training.item()) < 2:
-        continue
+    # if len(patient_table[patient_table.ptID == pt].interictal_training.item()) < 2:
+    #     continue
+    # Want to change here the IEEGID so that it's by file in the config
     ieegid = group.groupby('IEEGname').ngroup().astype(int)
     seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
     group.loc[ieegid.index,'IEEGID'] = ieegid
@@ -69,6 +70,8 @@ for pt, group in tqdm(
     for idx, row in tqdm(
         group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
     ):
+        if row.stim == 2: # Skip high frequency induced seizures
+            continue
         task_names = ['ictal','stim']
         onset = row.approximate_onset
         offset = row.end
@@ -92,7 +95,7 @@ for pt, group in tqdm(
 
         data, fs = get_iEEG_data(
             iEEG_filename=row["IEEGname"],
-            start_time_usec=(onset - 60) * 1e6, # start 30 seconds before the seizure
+            start_time_usec=(onset - 60) * 1e6, # start 60 seconds before the seizure
             stop_time_usec=(offset + 60) * 1e6,
             **ieeg_kwargs,
         )
@@ -153,48 +156,3 @@ for pt, group in tqdm(
                 format="EDF",
             )
 seizures_df.to_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
-# # Iterate through each patient
-# for pt in lf_pt_list:
-#     print(f"Starting Seizure Preprocessing for {pt}")
-#     try:
-#         raw_datapath = ospj(datapath,pt)
-#         # load dataframe of seizure times
-#         seizure_times = pd.read_csv(ospj(raw_datapath,f"seizure_times_{pt}.csv"))
-#         # load electrode information
-#         if not os.path.exists(ospj(raw_datapath, "electrode_localizations.csv")):
-#             hup_no = pt[3:]
-#             rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
-#             recon_path = ospj('/mnt','leif','littlab','data',
-#                             'Human_Data','CNT_iEEG_BIDS',
-#                             f'sub-RID0{rid}','derivatives','ieeg_recon',
-#                             'module3/')
-#             if not os.path.exists(recon_path):
-#                 recon_path =  ospj('/mnt','leif','littlab','data',
-#                             'Human_Data','recon','BIDS_penn',
-#                             f'sub-RID0{rid}','derivatives','ieeg_recon',
-#                             'module3/')
-#             electrode_localizations = electrode_localization(recon_path,rid)
-#             electrode_localizations.to_csv(ospj(raw_datapath,"electrode_localizations.csv"))
-#         else:
-#             electrode_localizations = pd.read_csv(ospj(raw_datapath,"electrode_localizations.csv"))
-#         ch_names = electrode_localizations[(electrode_localizations['index'] == 2) | (electrode_localizations['index'] == 3)]["name"].to_numpy()
-
-#         # loading seizures
-#         if not os.path.exists(ospj(raw_datapath, "seizures")):
-#             os.mkdir(ospj(raw_datapath, "seizures"))
-        
-#         # Iterate through each seizure in pre-defined pkl file
-#         for i_sz,row in seizure_times.iterrows():
-#             print(f"Saving seizure number: {i_sz}")
-#             seizure,fs = get_iEEG_data(usr,passpath,
-#                                         row.IEEGname,
-#                                         row.start*1e6,
-#                                         row.end*1e6,
-#                                         ch_names,
-#                                         force_pull = True)
-#             factor = get_factor(fs,TARGET)
-#             fsd = fs//factor
-#             seizure_ds = pd.DataFrame(sc.signal.decimate(seizure.to_numpy(),FACTOR,axis=0),columns=ch_names)           
-#             seizure_ds.to_pickle(ospj(raw_datapath,"seizures",f"{fsd}_seizure_{i_sz}_stim_{row.stim}.pkl"))
-#     except:
-#         print(f"unable to save seizures for {pt}")

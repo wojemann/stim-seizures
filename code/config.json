@@ -105,7 +105,7 @@
     "ieeg_ids": ["HUP273_phaseII","HUP273b_phaseII","HUP273c_phaseII","HUP273_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["HUP273b_phaseII", 41715]
     },
     {"ptID": "CHOP005",
     "ieeg_ids": ["CHOPCCEP_005"],
