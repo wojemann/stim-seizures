@@ -468,11 +468,13 @@ def label_fix(rid, threshold=0.25, return_old=False, df=None):
         return relabeled_df, brain_df
     return relabeled_df
 
-def electrode_localization(path_to_recon,RID):
-    atropos_metadata = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
-    localization_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
-    localization_metadata = pd.read_csv(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv')
-    def _apply_function(x):
+def optimize_localizations(path_to_recon,RID):
+    # /mnt/leif/littlab/data/Human_Data/recon/BIDS_penn/
+    # python /mnt/leif/littlab/data/Human_Data/recon/code/run_penn_recons.py
+    
+    atropos_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
+    dkt_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
+    def _apply_matter_function(x):
         # look in labels sorted and see if it contains gray matter
         # if gray matter is greater than 5% then set label to gray matter
         x = pd.DataFrame(x).transpose()
@@ -480,15 +482,31 @@ def electrode_localization(path_to_recon,RID):
             if (label == 'gray matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
                 x['label'] = label
                 x['index'] = 2
-                continue
+                break
             elif (label == 'white matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
                 x['label'] = label
                 x['index'] = 3
+                break
+        
         return x
+    def _apply_region_function(x):
+        # look in labels sorted and see if it contains gray matter
+        # if gray matter is greater than 5% then set label to gray matter
+        x = pd.DataFrame(x).transpose()
+        for i,label in enumerate(x['labels_sorted'].to_numpy()[0]):
+            if (label != 'EmptyLabel') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
+                x['label'] = label
+                break
+        return x
+        
+    modified_atropos = atropos_probs.iloc[:,:].apply(lambda x: _apply_matter_function(x), axis = 1)
+    modified_atropos_df = pd.DataFrame(np.squeeze(np.array(modified_atropos.to_list())),columns=atropos_probs.columns)
 
-    modified_atropos = atropos_metadata.iloc[:,:].apply(lambda x: _apply_function(x), axis = 1)
-    modified_atropos_df = pd.DataFrame(np.squeeze(np.array(modified_atropos.to_list())),columns=atropos_metadata.columns)
-    return modified_atropos_df
+    modified_dkt = dkt_probs.iloc[:,:].apply(lambda x: _apply_region_function(x),axis = 1)
+    modified_dkt_df = pd.DataFrame(np.squeeze(np.array(modified_dkt.to_list())),columns=dkt_probs.columns)
+    modified_dkt_df[modified_atropos_df.label == 'white matter']['label'] = 'white matter'
+
+    return modified_atropos_df,modified_dkt_df
 
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"

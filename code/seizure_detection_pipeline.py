@@ -89,6 +89,17 @@ def repair_data(outputs,data,fs=256,train_win=12,pred_win=1,w_size=1,w_stride=.5
     repaired = outputs.reshape((nwins,fs-(train_win + pred_win)+1,nchannels))
     return repaired
 
+def scale_normalized(data,m=5):
+    # takes in data and returns a flattened array with outliers removed based on distribution of entire tensor
+    data_flat = data.flatten()
+    d = np.abs(data_flat - np.median(data_flat))
+    mdev = np.median(d)
+    s = d / mdev
+    scaler = np.max(data_flat[s<m])
+    data_norm = data/scaler
+    data_norm[data_norm > 1] = 1
+    return data_norm
+
 # Define LSTM and LR models
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -115,6 +126,57 @@ class LRModel(nn.Module):
         return out
     def __str__(self):
         return "LR"
+
+class AbsSlope():
+    def __init__(self, win_size = 1, stride = 0.5, fs = 256):
+        self.function = lambda x: np.mean(np.abs(np.diff(x,axis=-1)),axis=-1)
+        self.win_size = win_size
+        self.stride = stride
+        self.fs = fs
+    
+    def __str__(self) -> str:
+        return "AbsSlp"
+        
+    def fit(self, x):
+        # x should be samples x channels df
+        self.scaler = RobustScaler().fit(x)
+        nx = self.scaler.transform(x)
+        self.nstds = np.std(nx,axis=0)
+
+    def get_times(self, x):
+        # x should be samples x channels df
+        time_mat = MovingWinClips(np.arange(len(x))/self.fs,self.fs,self.win_size,self.stride)
+        return time_mat[:,0]
+
+    def forward(self, x):
+        # x is samples x channels df
+        self.data = x
+        x = self.scaler.transform(x)
+        x = x.T
+        slopes = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
+        scaled_slopes = slopes.squeeze()/np.expand_dims(self.nstds,1)*self.fs
+        scaled_slopes = scaled_slopes.squeeze()
+        normalized_slopes = scale_normalized(scaled_slopes)
+        return normalized_slopes
+    
+    def __call__(self, *args):
+        return self.forward(*args)
+
+# preprocessing function wrapper
+def electrode_wrapper(pt,rid_hup,chs):
+    hup_no = pt[3:]
+    rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
+    recon_path = ospj('/mnt','leif','littlab','data',
+                        'Human_Data','CNT_iEEG_BIDS',
+                        f'sub-RID0{rid}','derivatives','ieeg_recon',
+                        'module3/')
+    if not os.path.exists(recon_path):
+        recon_path =  ospj('/mnt','leif','littlab','data',
+                        'Human_Data','recon','BIDS_penn',
+                        f'sub-RID0{rid}','derivatives','ieeg_recon',
+                        'module3/')
+    electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
+    return electrode_localizations,electrode_regions
 
 # Train the model instance using provided data
 def train_model(model,dataloader,criterion,optimizer,num_epochs=100,ccheck=False):
@@ -147,16 +209,29 @@ def scale_normalized(data,m=5):
     data_norm[data_norm > 1] = 1
     return data_norm
 
+
+def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
+    plt.subplots(figsize=(48,24))
+    plt.imshow(mat)
+    plt.axvline(120,linestyle = '--',color = 'white')
+    plt.xlabel('Time (s)')
+    plt.yticks(np.arange(len(yticks)),yticks,rotation=0,fontsize=10)
+    plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-60)
+    if xlim is not None:
+        plt.xlim(xlim)
+    plt.savefig(fig_save_path)
+
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,_,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
+    mdl_str = 'AbsSlp'
 
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
@@ -168,47 +243,61 @@ def main():
         inter,fs = get_data_from_bids(ospj(datapath,"BIDS"),pt,'interictal')
         chn_labels = remove_scalp_electrodes(inter.columns)
         inter = inter[chn_labels]
+        try:
+            electrode_localizations,_ = electrode_wrapper(pt,rid_hup,chn_labels)
+            electrode_localizations.name = clean_labels(electrode_localizations.name,pt)
+            neural_channels = electrode_localizations.name[(electrode_localizations.name.isin(inter.columns)) & ((electrode_localizations.label == 'white matter') | (electrode_localizations.label == 'gray matter'))]
+        except:
+            print(f"electrode localization failed for {pt}")
+            neural_channels = chn_labels
+        inter = inter.loc[:,neural_channels]
 
         mask,_ = detect_bad_channels(inter.to_numpy(),fs)
         inter = inter.drop(inter.columns[~mask],axis=1)
 
         # Preprocess the signal
         inter, fs = preprocess_for_detection(inter,fs,montage,2)
-
-        # Prepare input and target data for the LSTM
-        input_data,target_data = prepare_segment(inter)
-
-        dataset = TensorDataset(input_data, target_data)
-        full_batch = len(dataset)
-        dataloader = DataLoader(dataset, batch_size=full_batch, shuffle=False)
-
-        # Instantiate the model
-        input_size = input_data.shape[2]
-        hidden_size = 10
-        output_size = input_data.shape[2]
-
-        # Check for cuda
-        ccheck = torch.cuda.is_available()
-        set_seed(1071999)
-        # Initialize the model
-        model = LSTMModel(input_size, hidden_size, output_size)
-        if ccheck:
-            model.cuda()
         
-        # Define loss function and optimizer
-        criterion = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.01)
+        if mdl_str == 'LSTM':
+            ###
+            # Prepare input and target data for the LSTM
+            input_data,target_data = prepare_segment(inter)
 
-        # Train the model, this will just modify the model object, no returns
-        # print("Training patient specific model")
-        train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
+            dataset = TensorDataset(input_data, target_data)
+            full_batch = len(dataset)
+            dataloader = DataLoader(dataset, batch_size=full_batch, shuffle=False)
 
-        # Creating classification thresholds
-        # print("Generating loss decision threshold")
-        input_data,target_data = prepare_segment(inter)
-        inter_outputs = predict_sz(model,input_data,target_data,batch_size=full_batch,ccheck=ccheck)
-        thresholds = np.percentile(inter_outputs,90,0)
+            # Instantiate the model
+            input_size = input_data.shape[2]
+            hidden_size = 10
+            output_size = input_data.shape[2]
 
+            # Check for cuda
+            ccheck = torch.cuda.is_available()
+            set_seed(1071999)
+
+            # Initialize the model
+            model = LSTMModel(input_size, hidden_size, output_size)
+            if ccheck:
+                model.cuda()
+            
+            # Define loss function and optimizer
+            criterion = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=0.01)
+
+            # Train the model, this will just modify the model object, no returns
+            # print("Training patient specific model")
+            train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
+
+            # Creating classification thresholds
+            input_data,target_data = prepare_segment(inter)
+            inter_outputs = predict_sz(model,input_data,target_data,batch_size=full_batch,ccheck=ccheck)
+            thresholds = np.percentile(inter_outputs,90,0)
+            ###
+        elif mdl_str == 'AbsSlp':
+            model = AbsSlope(1,.5, fs)
+            model.fit(inter)
+            
         # Iterating through each seizure for that patient
         seizure_times = seizures_df[seizures_df.Patient == pt]
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),leave=False)
@@ -218,7 +307,7 @@ def main():
             # Load in seizure and metadata for BIDS path
             seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             # Filter out bad channels from interictal clip
-            seizure = seizure[chn_labels]
+            seizure = seizure[neural_channels]
             seizure = seizure.drop(seizure.columns[~mask],axis=1)
             # Perform overwrite check
             prob_path = f"probability_matrix_mdl-{model}_fs-{int(fs_raw/FACTOR)}_montage-{montage}_task-{task}_run-{run}.pkl"
@@ -226,27 +315,40 @@ def main():
                  continue
             # Preprocess seizure for seizure detection task
             seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,factor=FACTOR)
-            input_data, target_data,time_wins = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
-            # Generate seizure detection predictions for each window
-            outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
-            seizure_mat = repair_data(outputs,seizure)
-            # Getting raw predicted loss values for each window
-            raw_sz_vals = np.mean(np.log(seizure_mat),1).T
-            # Creating classifications
-            sz_clf = (raw_sz_vals.T > np.log(thresholds)).T
-            # Dropping channels with too many positive detections (bad channels)
-            # rejection_mask = np.sum(sz_clf[:,:120],axis=1) > 60
-            # sz_clf[rejection_mask,:] = 0 # fake channel rejection
+            
+            if mdl_str == 'LSTM':
+                ###
+                input_data, target_data,time_wins = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
+                # Generate seizure detection predictions for each window
+                outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
+                seizure_mat = repair_data(outputs,seizure)
+                # Getting raw predicted loss values for each window
+                raw_sz_vals = np.mean(np.log(seizure_mat),1).T
+                # Creating classifications
+                mdl_outs = (raw_sz_vals.T > np.log(thresholds)).T.astype(float)
+                ###
+            elif mdl_str == 'AbsSlp':
+                mdl_outs = model(seizure)
+                time_wins = model.get_times(seizure)
 
             # Creating probabilities by temporally smoothing classification
-            sz_prob = sc.ndimage.uniform_filter1d(sz_clf.astype(float),10,axis=1)
+            sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,10,axis=1)
             sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure.columns)
             time_df = pd.Series(time_wins,name='time')
             sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)
             os.makedirs(ospj(prodatapath,pt),exist_ok=True)
             sz_prob_df.to_pickle(ospj(prodatapath,pt,prob_path))
             # np.save(ospj(prodatapath,pt,prob_path),sz_prob)
-            np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
+            # np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
+            first_detect = np.argmax(sz_prob[:,115:]>0.5,axis=1)
+            first_detect[first_detect == 0] = sz_prob.shape[1]
+            ch_sorting = np.argsort(first_detect)
+            
+            os.makedirs(ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str),exist_ok=True)
+            plot_and_save_detection(sz_prob[ch_sorting,:],
+                                    time_wins,
+                                    seizure.columns[ch_sorting],
+                                    ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_prob.png"))
         del model
 if __name__ == "__main__":
     main()

@@ -61,10 +61,10 @@ def main():
     predicted_channels.sort_values('approximate_onset',inplace=True)
     annotations_df.sort_values('approximate_onset',inplace=True)
     pred_channels_wannots = pd.merge_asof(predicted_channels,
-                                                          annotations_df[['approximate_onset','Patient','all_chs','ueo_consensus','ueo_any','sec_consensus','sec_any']],
-                                                          on='approximate_onset',by='Patient',
-                                                          tolerance = 120,
-                                                          direction='nearest')
+                                        annotations_df[['approximate_onset','Patient','all_chs','ueo_consensus','ueo_any','sec_consensus','sec_any']],
+                                        on='approximate_onset',by='Patient',
+                                        tolerance = 120,
+                                        direction='nearest')
     pred_channels_wannots.dropna(axis=0,subset='ueo_consensus',inplace=True)
     pred_channels_wannots.sort_values(['Patient','iEEG_ID','approximate_onset'],inplace=True)
     pred_channels_wdice = pred_channels_wannots.apply(apply_dice_score,axis=1)

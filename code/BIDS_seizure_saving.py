@@ -14,35 +14,6 @@ from tqdm import tqdm
 import mne
 from mne_bids import BIDSPath, write_raw_bids
 
-def optimize_localizations(path_to_recon,RID):
-    # /mnt/leif/littlab/data/Human_Data/recon/BIDS_penn/
-    # python /mnt/leif/littlab/data/Human_Data/recon/code/run_penn_recons.py
-    
-    atropos_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
-    dkt_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
-    localization_metadata = pd.read_csv(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv')
-    def _apply_matter_function(x):
-        # look in labels sorted and see if it contains gray matter
-        # if gray matter is greater than 5% then set label to gray matter
-        x = pd.DataFrame(x).transpose()
-        for i,label in enumerate(x['labels_sorted'].to_numpy()[0]):
-            if (label == 'gray matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
-                x['label'] = label
-                x['index'] = 2
-                continue
-            elif (label == 'white matter') and (x['percent_assigned'].to_numpy()[0][i] > 0.05):
-                x['label'] = label
-                x['index'] = 3
-                continue
-        
-        return x
-
-    modified_atropos = atropos_probs.iloc[:,:].apply(lambda x: _apply_matter_function(x), axis = 1)
-    modified_atropos_df = pd.DataFrame(np.squeeze(np.array(modified_atropos.to_list())),columns=atropos_probs.columns)
-
-    modified_dkt = dkt_probs.iloc[:,:].apply(lambda x: _apply_region_function(x),axis = 1)
-    return modified_atropos_df,
-
 # Loading CONFIG
 usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
 
@@ -50,7 +21,7 @@ usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_c
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -87,23 +58,6 @@ def main():
         position=0,
     ):
         
-        # Create electrode localization and region localization sheets
-        hup_no = pt[3:]
-        rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
-        recon_path = ospj('/mnt','leif','littlab','data',
-                            'Human_Data','CNT_iEEG_BIDS',
-                            f'sub-RID0{rid}','derivatives','ieeg_recon',
-                            'module3/')
-        if not os.path.exists(recon_path):
-            recon_path =  ospj('/mnt','leif','littlab','data',
-                            'Human_Data','recon','BIDS_penn',
-                            f'sub-RID0{rid}','derivatives','ieeg_recon',
-                            'module3/')
-        elec_loc_atropos = optimize_localizations(recon_path,rid)
-        elec_loc_dkt = optimi
-        # if len(patient_table[patient_table.ptID == pt].interictal_training.item()) < 2:
-        #     continue
-        # Want to change here the IEEGID so that it's by file in the config
         ieegid = group.groupby('IEEGname').ngroup().astype(int)
         seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
         group.loc[ieegid.index,'IEEGID'] = ieegid
@@ -176,7 +130,7 @@ def main():
                 ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
             )
             raw = mne.io.RawArray(
-                data.to_numpy().T / 1e6,  # mne needs data in volts,
+                data_np_ds / 1e6,  # mne needs data in volts,
                 data_info,
                 verbose=False,
             )
@@ -201,5 +155,5 @@ def main():
                 )
     seizures_df.to_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()

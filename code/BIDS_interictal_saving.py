@@ -22,7 +22,7 @@ usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_c
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -108,8 +108,9 @@ def main():
         data_info = mne.create_info(
             ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
         )
+        
         raw = mne.io.RawArray(
-            data.to_numpy().T / 1e6,  # mne needs data in volts,
+            data_np_ds / 1e6,  # mne needs data in volts,
             data_info,
             verbose=False,
         )
@@ -133,5 +134,5 @@ def main():
                 format="EDF",
             )
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()

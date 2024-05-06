@@ -30,25 +30,14 @@ sys.path.append('/users/wojemann/iEEG_processing')
 
 plt.rcParams['image.cmap'] = 'magma'
 
-def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
-    plt.subplots(figsize=(48,24))
-    plt.imshow(mat)
-    plt.axvline(120,linestyle = '--',color = 'white')
-    plt.xlabel('Time (s)')
-    plt.yticks(np.arange(len(yticks)),yticks,rotation=0,fontsize=10)
-    plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-60)
-    if xlim is not None:
-        plt.xlim(xlim)
-    plt.savefig(fig_save_path)
-
 def main():
-    _,_,datapath,prodatapath,figpath,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_str = 'LSTM'
+    mdl_str = 'AbsSlp'
     clf_fs = 256
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
@@ -148,13 +137,6 @@ def main():
             #                         time_wins,
             #                         prob_chs,
             #                         ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_clf_final.png"))
-            first_detect = np.argmax(sz_prob[:,115:]>0.5,axis=1)
-            first_detect[first_detect == 0] = sz_prob.shape[1]
-            ch_sorting = np.argsort(first_detect)
-            plot_and_save_detection(sz_prob[ch_sorting,:],
-                                    time_wins,
-                                    prob_chs[ch_sorting],
-                                    ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_prob.png"))
     predicted_channels = pd.DataFrame(predicted_channels)
     predicted_channels.to_pickle(ospj(prodatapath,"predicted_channels.pkl"))
     predicted_channels.to_csv(ospj(prodatapath,"predicted_channels.csv"))
