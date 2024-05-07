@@ -45,7 +45,7 @@ def apply_dice_score(row):
             if (len(ch_preds) + len(row[col+'_chs'])) == 0:
                 row[f'{col}_{pred}_dice'] = 0
             else:
-                row[f'{col}_{pred}_dice'] = dice_score(row[col],ch_preds)
+                row[f'{col}_{pred}_dice'] = dice_score(row[col+'_chs'],ch_preds)
     return row
 
 def main():
@@ -54,8 +54,6 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
     predicted_channels = pd.read_pickle(ospj(prodatapath,"predicted_channels.pkl"))
     annotations_df.columns = ['Patient' if c == 'patient' else c for c in annotations_df.columns]
-    montage = 'bipolar'
-    mdl_str = 'LSTM'
     # Iterating through each seizure that we have annotations for
     predicted_channels = predicted_channels[predicted_channels.to_annotate == 1]
     predicted_channels.sort_values('approximate_onset',inplace=True)
@@ -68,13 +66,7 @@ def main():
     pred_channels_wannots.dropna(axis=0,subset='ueo_consensus',inplace=True)
     pred_channels_wannots.sort_values(['Patient','iEEG_ID','approximate_onset'],inplace=True)
     pred_channels_wdice = pred_channels_wannots.apply(apply_dice_score,axis=1)
-    pbar = tqdm(predicted_channels.iterrows(),total=len(predicted_channels))
-    for _,row in pbar:
-        pt = row.ptID
-        pbar.set_description(desc=f"Patient: {pt}",refresh=True)
-        
-        # four predicted channels into a boolearn array
-        # calculate dice score with consensus and with any for all four mdl annotation types
+    pred_channels_wdice.to_pickle(ospj(prodatapath,f"predicted_channels_wdice.pkl"))
 
 if __name__ == "__main__":
     main()

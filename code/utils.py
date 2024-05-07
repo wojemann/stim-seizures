@@ -471,9 +471,13 @@ def label_fix(rid, threshold=0.25, return_old=False, df=None):
 def optimize_localizations(path_to_recon,RID):
     # /mnt/leif/littlab/data/Human_Data/recon/BIDS_penn/
     # python /mnt/leif/littlab/data/Human_Data/recon/code/run_penn_recons.py
-    
-    atropos_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
-    dkt_probs = pd.read_json(path_to_recon + f'sub-RID0{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
+    try:
+        atropos_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
+        dkt_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
+    except:
+        dkt_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json')
+        atropos_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json')
+
     def _apply_matter_function(x):
         # look in labels sorted and see if it contains gray matter
         # if gray matter is greater than 5% then set label to gray matter

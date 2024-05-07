@@ -166,14 +166,17 @@ class AbsSlope():
 def electrode_wrapper(pt,rid_hup,chs):
     hup_no = pt[3:]
     rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
+    rid = str(rid)
+    if len(rid) < 4:
+        rid = '0' + rid
     recon_path = ospj('/mnt','leif','littlab','data',
                         'Human_Data','CNT_iEEG_BIDS',
-                        f'sub-RID0{rid}','derivatives','ieeg_recon',
+                        f'sub-RID{rid}','derivatives','ieeg_recon',
                         'module3/')
     if not os.path.exists(recon_path):
         recon_path =  ospj('/mnt','leif','littlab','data',
                         'Human_Data','recon','BIDS_penn',
-                        f'sub-RID0{rid}','derivatives','ieeg_recon',
+                        f'sub-RID{rid}','derivatives','ieeg_recon',
                         'module3/')
     electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
     return electrode_localizations,electrode_regions
@@ -208,7 +211,6 @@ def scale_normalized(data,m=5):
     data_norm = data/scaler
     data_norm[data_norm > 1] = 1
     return data_norm
-
 
 def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
     plt.subplots(figsize=(48,24))
