@@ -107,6 +107,12 @@ class LSTMModel(nn.Module):
         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
+    def fit_scaler(self, x):
+        self.scaler = RobustScaler().fit(x)
+
+    def scaler_transform(self, x):
+        return self.scaler.transform(x)
+    
     def forward(self, x):
         out, _ = self.lstm(x)
         out = self.fc(out[:, -1,:])
@@ -163,7 +169,7 @@ class AbsSlope():
         return self.forward(*args)
 
 # preprocessing function wrapper
-def electrode_wrapper(pt,rid_hup,chs):
+def electrode_wrapper(pt,rid_hup):
     hup_no = pt[3:]
     rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
     rid = str(rid)
@@ -226,27 +232,32 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
-    mdl_str = 'AbsSlp'
+    mdl_str = 'LSTM'
+    # normalize = True
+    # smearing = 20
 
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
+        # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
             continue
+        # Loading data from bids
         inter,fs = get_data_from_bids(ospj(datapath,"BIDS"),pt,'interictal')
+        # Pruning channels
         chn_labels = remove_scalp_electrodes(inter.columns)
         inter = inter[chn_labels]
         try:
-            electrode_localizations,_ = electrode_wrapper(pt,rid_hup,chn_labels)
+            electrode_localizations,_ = electrode_wrapper(pt,rid_hup)
             electrode_localizations.name = clean_labels(electrode_localizations.name,pt)
             neural_channels = electrode_localizations.name[(electrode_localizations.name.isin(inter.columns)) & ((electrode_localizations.label == 'white matter') | (electrode_localizations.label == 'gray matter'))]
         except:
@@ -254,34 +265,38 @@ def main():
             neural_channels = chn_labels
         inter = inter.loc[:,neural_channels]
 
+        # Detecting and removing excess noisy channels
         mask,_ = detect_bad_channels(inter.to_numpy(),fs)
         inter = inter.drop(inter.columns[~mask],axis=1)
 
         # Preprocess the signal
         inter, fs = preprocess_for_detection(inter,fs,montage,2)
-        
+        # Training selected model
         if mdl_str == 'LSTM':
             ###
+            # Instantiate the model
+            input_size = inter.shape[1]
+            hidden_size = 10
+            output_size = inter.shape[1]
+
+            # Check for cuda
+            ccheck = torch.cuda.is_available()
+
+            # Initialize the model
+            model = LSTMModel(input_size, hidden_size, output_size)
+            if ccheck:
+                model.cuda()
+            
+            # Scale the training data
+            model.fit_scaler(inter)
+            inter = model.scaler_transform(inter)
+
             # Prepare input and target data for the LSTM
             input_data,target_data = prepare_segment(inter)
 
             dataset = TensorDataset(input_data, target_data)
             full_batch = len(dataset)
             dataloader = DataLoader(dataset, batch_size=full_batch, shuffle=False)
-
-            # Instantiate the model
-            input_size = input_data.shape[2]
-            hidden_size = 10
-            output_size = input_data.shape[2]
-
-            # Check for cuda
-            ccheck = torch.cuda.is_available()
-            set_seed(1071999)
-
-            # Initialize the model
-            model = LSTMModel(input_size, hidden_size, output_size)
-            if ccheck:
-                model.cuda()
             
             # Define loss function and optimizer
             criterion = nn.MSELoss()
@@ -320,6 +335,7 @@ def main():
             
             if mdl_str == 'LSTM':
                 ###
+                seizure = model.scaler_transform(seizure)
                 input_data, target_data,time_wins = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
                 # Generate seizure detection predictions for each window
                 outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
@@ -334,7 +350,7 @@ def main():
                 time_wins = model.get_times(seizure)
 
             # Creating probabilities by temporally smoothing classification
-            sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,10,axis=1)
+            sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1)
             sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure.columns)
             time_df = pd.Series(time_wins,name='time')
             sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)

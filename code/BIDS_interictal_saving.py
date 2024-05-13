@@ -22,7 +22,7 @@ usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_c
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets

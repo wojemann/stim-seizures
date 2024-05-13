@@ -240,9 +240,7 @@ def clean_labels(channel_li: list, pt: str) -> list:
         i = i.replace("GRID", "G")  # mne has limits on channel name size
         # standardizes channel names
         regex_match = re.match(r"(\D+)(\d+)", i)
-        if pt == "HUP224":
-            if i == "LF7":
-                continue
+
         if regex_match is None:
             new_channels.append(i)
             continue

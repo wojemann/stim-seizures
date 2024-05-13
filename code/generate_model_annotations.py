@@ -43,6 +43,7 @@ def main():
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
                         'model':[],
+                        'stim':[],
                         'approximate_onset': [],
                         'ueo_time_consensus': [],
                         'threshold':[],
@@ -91,6 +92,7 @@ def main():
                     predicted_channels['Patient'].append(sz_row.Patient)
                     predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
                     predicted_channels['model'].append(mdl_str)
+                    predicted_channels['stim'].append(sz_row.stim)
                     predicted_channels['approximate_onset'].append(sz_row.approximate_onset)
                     predicted_channels['ueo_time_consensus'].append(consensus_time)
                     predicted_channels['to_annotate'].append(sz_row.to_annotate)
