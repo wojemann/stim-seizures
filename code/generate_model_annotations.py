@@ -97,25 +97,7 @@ def main():
                     predicted_channels['ueo_time_consensus'].append(consensus_time)
                     predicted_channels['to_annotate'].append(sz_row.to_annotate)
                     predicted_channels['threshold'].append(final_thresh)
-                    # append to dataframe with patient, ieeg file, approximate onset time, bids path, threshold, strict channels and liberal channels
-                    # Do the same for 10 second spread
-                    # Plot the matrices in each patient's figure folder
 
-                    # Here I will need to figure out when clinicians said the onset time was relative to the original time and then find that index in the time windows
-                    # Find out which channels were never seizing
-                    # first_detect = np.argmax(sz_prob>final_thresh,axis=1)
-                    # first_detect[first_detect == 0] = sz_prob.shape[1]
-                    # # first_onset_detect = np.argmax(sz_prob[:,(onset_index-10):]>final_thresh,axis=1)
-                    # ch_sorting = np.argsort(first_detect)
-
-                    # rejecting noisy/late channels
-                    # bottom_mask = np.sum(sz_clf[ch_sorting,:],axis=1) > 0
-                    # first_zero = np.where(~bottom_mask)[0][0].astype(int)
-                    # sz_clf[ch_sorting[first_zero:],:] = 0
-                    # sz_prob[ch_sorting[first_zero:],:] = 0
-
-                    # Here we want to loop through a list of thresholds and generate the following columns of data
-                    # bp channels in UEO, bp channels in UEO + 10
                     sz_clf_final = sz_prob > final_thresh
 
                     # Here this could be first seizing index, or it could be the time of the clinically defined UEO from the annotations

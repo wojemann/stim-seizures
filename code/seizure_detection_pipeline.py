@@ -66,7 +66,6 @@ def prepare_segment(data, fs = 256,train_win = 12, pred_win = 1, w_size = 1, w_s
 def predict_sz(model, input_data, target_data,batch_size=1,ccheck=False):
     dataset = TensorDataset(input_data,target_data)
     dataloader = DataLoader(dataset,batch_size=batch_size,shuffle=False)
-    ccheck = torch.cuda.is_available()
     if ccheck:
         model.cuda()
     with torch.no_grad():
@@ -232,7 +231,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
@@ -257,8 +256,11 @@ def main():
         chn_labels = remove_scalp_electrodes(inter.columns)
         inter = inter[chn_labels]
         try:
-            electrode_localizations,_ = electrode_wrapper(pt,rid_hup)
+            electrode_localizations,electrode_regions = electrode_wrapper(pt,rid_hup)
             electrode_localizations.name = clean_labels(electrode_localizations.name,pt)
+            electrode_regions.name = clean_labels(electrode_regions.name,pt)
+            electrode_localizations.to_pickle(ospj(prodatapath,pt,'electrode_localizations_atropos.pkl'))
+            electrode_regions.to_pickle(ospj(prodatapath,pt,'electrode_localizations_dkt.pkl'))
             neural_channels = electrode_localizations.name[(electrode_localizations.name.isin(inter.columns)) & ((electrode_localizations.label == 'white matter') | (electrode_localizations.label == 'gray matter'))]
         except:
             print(f"electrode localization failed for {pt}")
@@ -280,7 +282,8 @@ def main():
             output_size = inter.shape[1]
 
             # Check for cuda
-            ccheck = torch.cuda.is_available()
+            # ccheck = torch.cuda.is_available()
+            ccheck = False
 
             # Initialize the model
             model = LSTMModel(input_size, hidden_size, output_size)
@@ -289,7 +292,8 @@ def main():
             
             # Scale the training data
             model.fit_scaler(inter)
-            inter = model.scaler_transform(inter)
+            inter_z = model.scaler_transform(inter)
+            inter = pd.DataFrame(inter_z,columns=inter.columns)
 
             # Prepare input and target data for the LSTM
             input_data,target_data = prepare_segment(inter)
@@ -335,7 +339,8 @@ def main():
             
             if mdl_str == 'LSTM':
                 ###
-                seizure = model.scaler_transform(seizure)
+                seizure_z = model.scaler_transform(seizure)
+                seizure = pd.DataFrame(seizure_z,columns=seizure.columns)
                 input_data, target_data,time_wins = prepare_segment(seizure,fs,train_win,pred_win,ret_time=True)
                 # Generate seizure detection predictions for each window
                 outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
