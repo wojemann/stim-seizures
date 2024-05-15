@@ -66,9 +66,7 @@ def main():
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
                 prob_path = f"probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
-                # clf_path = f"raw_preds_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.npy"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
-                # sz_clf = np.load(ospj(prodatapath,pt,clf_path))
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
                 prob_chs = sz_prob.columns.to_numpy()

@@ -69,7 +69,7 @@
     "ieeg_ids": ["HUP253_phaseII","HUP253_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": ["HUP253_phaseII",5783]
+    "interictal_training": ["HUP253_phaseII",77624]
     },
     {"ptID": "HUP257",
     "ieeg_ids": ["HUP257_phaseII","HUP257_CCEP"],

@@ -5,11 +5,11 @@
 "iEEG_USR": "wojemann", 
 "iEEG_PWD": "/mnt/leif/littlab/users/wojemann/woj_ieeglogin.bin"}, 
 "patients": [
-    {"ptID": "HUP257",
-    "ieeg_ids": ["HUP257_phaseII","HUP257_CCEP"],
+    {"ptID": "HUP253",
+    "ieeg_ids": ["HUP253_phaseII","HUP253_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": ["HUP257_phaseII",15600]
-}
+    "interictal_training": ["HUP253_phaseII",77624]
+    }
 ]
 }

@@ -1,3 +1,4 @@
+#// "interictal_training": ["HUP253_phaseII",5783]
 # iEEG imports
 from ieeg.auth import Session
 
@@ -231,7 +232,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
@@ -239,8 +240,6 @@ def main():
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
     mdl_str = 'LSTM'
-    # normalize = True
-    # smearing = 20
 
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
@@ -282,8 +281,8 @@ def main():
             output_size = inter.shape[1]
 
             # Check for cuda
-            # ccheck = torch.cuda.is_available()
-            ccheck = False
+            ccheck = torch.cuda.is_available()
+            # ccheck = False
 
             # Initialize the model
             model = LSTMModel(input_size, hidden_size, output_size)
@@ -363,7 +362,7 @@ def main():
             sz_prob_df.to_pickle(ospj(prodatapath,pt,prob_path))
             # np.save(ospj(prodatapath,pt,prob_path),sz_prob)
             # np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
-            first_detect = np.argmax(sz_prob[:,115:]>0.5,axis=1)
+            first_detect = np.argmax(sz_prob[:,115:]>.5,axis=1)
             first_detect[first_detect == 0] = sz_prob.shape[1]
             ch_sorting = np.argsort(first_detect)
             
