@@ -665,7 +665,19 @@ def make_surf_transforms(sub_rid=None, overwrite=False, path=None):
 
     return return_paths
 
-
+def cohens_d(group1, group2):
+    # Calculating means of the two groups
+    mean1, mean2 = np.mean(group1), np.mean(group2)
+     
+    # Calculating pooled standard deviation
+    std1, std2 = np.std(group1, ddof=1), np.std(group2, ddof=1)
+    n1, n2 = len(group1), len(group2)
+    pooled_std = np.sqrt(((n1 - 1) * std1 ** 2 + (n2 - 1) * std2 ** 2) / (n1 + n2 - 2))
+     
+    # Calculating Cohen's d
+    d = (mean1 - mean2) / pooled_std
+     
+    return d
 ################################################ Preprocessing ################################################
 def notch_filter(data: np.ndarray, fs: float) -> np.array:
     """_summary_

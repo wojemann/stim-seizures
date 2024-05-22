@@ -37,6 +37,7 @@ def main():
     mdl_str = 'LSTM'
     clf_fs = 256
     final_thresh = 0.325
+    first_sz_idx_offset = 118
 
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
@@ -44,13 +45,14 @@ def main():
                         'model':[],
                         'stim':[],
                         'approximate_onset': [],
-                        'ueo_time_consensus': [],
                         'threshold':[],
                         'ueo_chs_strict':[],
                         'ueo_chs_loose': [],
                         'sec_chs_strict': [],
                         'sec_chs_loose':[],
-                        'to_annotate': []
+                        'sz_chs': [],
+                        'sz_times': [],
+                        'all_channels': []
                         }
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
@@ -78,21 +80,27 @@ def main():
             predicted_channels['stim'].append(sz_row.stim)
             predicted_channels['approximate_onset'].append(sz_row.approximate_onset)
             predicted_channels['threshold'].append(final_thresh)
-
+            predicted_channels['all_channels'].append(np.array([s.split("-")[0] for s in prob_chs]).flatten())
             sz_clf_final = sz_prob > final_thresh
 
             # To save
             # First seizing index at the final threshold after offset
             # UEO channels at first seizing index + 3 indices
             # Seizing index and time since first seizing index for each channel
-            first_sz_idx_offset = 118
             sliced_data = sz_clf_final[:,first_sz_idx_offset:]
             first_sz_idxs = np.argmax(sliced_data,axis=1)
-            no_sz_idxs = ~np.any(sliced_data,axis=1)
+            seized_idxs = np.any(sliced_data,axis=1)
             first_sz_idxs += first_sz_idx_offset
-            first_sz_idxs[no_sz_idxs] = sz_clf_final.shape[1]-1
-
-            sz_times_arr = time_wins[first_sz_idxs]
+            if sum(seized_idxs) > 0:
+                sz_times_arr = time_wins[first_sz_idxs[seized_idxs]]
+                sz_times_arr -= np.min(sz_times_arr)
+                sz_ch_arr = prob_chs[seized_idxs]
+                sz_ch_arr = np.array([s.split("-")[0] for s in sz_ch_arr]).flatten()
+            else:
+                sz_ch_arr = []
+                sz_times_arr = []
+            predicted_channels['sz_chs'].append(sz_ch_arr)
+            predicted_channels['sz_times'].append(sz_times_arr)
             # NEED TO SAVE TIMES ARRAY ALONG WITH CHANNELS TO THE DF
             # THEN I WILL GO WITHIN PATIENTS, SEARCH THROUGH ALL SPONTANEOUS SEIZURES, AND SEE WHEN THE STIM ONSET REGIONS/CHANNELS START SEIZING IN THE SPONTANEOUS SEIZURES
 
@@ -112,7 +120,7 @@ def main():
             predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"predicted_channels.pkl"))
-    predicted_channels.to_csv(ospj(prodatapath,"predicted_channels.csv"))
+    predicted_channels.to_pickle(ospj(prodatapath,"optimized_predicted_channels.pkl"))
+    predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()
