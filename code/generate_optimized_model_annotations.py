@@ -34,9 +34,9 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_str = 'LSTM'
+    mdl_str = 'NRG'
     clf_fs = 256
-    final_thresh = 0.325
+    final_thresh = 0.75
     first_sz_idx_offset = 118
 
     # Iterating through each patient that we have annotations for

@@ -102,10 +102,10 @@ def scale_normalized(data,m=5):
 
 # Define LSTM and LR models
 class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size):
         super(LSTMModel, self).__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
+        self.fc = nn.Linear(hidden_size, input_size)
 
     def fit_scaler(self, x):
         self.scaler = RobustScaler().fit(x)
@@ -167,6 +167,68 @@ class AbsSlope():
     
     def __call__(self, *args):
         return self.forward(*args)
+    
+class NRG():
+    def __init__(self, win_size = 1, stride = 0.5, fs = 256):
+        self.win_size = win_size
+        self.stride = stride
+        self.fs = fs
+        self.function = lambda x: np.sum(sig.welch(x,self.fs)[1],axis=-1)
+
+    
+    def __str__(self) -> str:
+        return "NRG"
+        
+    def fit(self, x):
+        # x should be samples x channels df
+        self.scaler = RobustScaler().fit(x)
+        nx = self.scaler.transform(x)
+        self.nstds = np.std(nx,axis=0)
+
+    def get_times(self, x):
+        # x should be samples x channels df
+        time_mat = MovingWinClips(np.arange(len(x))/self.fs,self.fs,self.win_size,self.stride)
+        return time_mat[:,0]
+
+    def forward(self, x):
+        # x is samples x channels df
+        self.data = x
+        x = self.scaler.transform(x)
+        x = x.T
+        nrg = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
+        nrg = nrg.squeeze()
+        normalized_nrg = scale_normalized(nrg)
+        return normalized_nrg
+    
+    def __call__(self, *args):
+        return self.forward(*args)
+
+class LSTMX(nn.Module):
+    def __init__(self, num_channels, hidden_size):
+        super(LSTMX, self).__init__()
+        self.num_channels = num_channels
+        self.lstms = nn.ModuleList([nn.LSTM(1, hidden_size, batch_first=True) for _ in range(num_channels)])
+        self.fcs = nn.ModuleList([nn.Linear(hidden_size, 1) for _ in range(num_channels)])
+
+    def forward(self, x):
+        outputs = []
+        for i in range(self.num_channels):
+            out, _ = self.lstms[i](x[:, :, i].unsqueeze(-1))  # LSTM input shape: (batch_size, seq_len, 1)
+            out = self.fcs[i](out[:, -1, :])  # FC input shape: (batch_size, hidden_size)
+            outputs.append(out.unsqueeze(1))  # Add channel dimension back
+
+        # Concatenate outputs along channel dimension
+        output = torch.cat(outputs, dim=1).squeeze()  # shape: (batch_size, num_channels, 1)
+        return output
+    
+    def __str__(self):
+         return "LSTMX"
+    
+    def fit_scaler(self, x):
+        self.scaler = RobustScaler().fit(x)
+
+    def scaler_transform(self, x):
+        return self.scaler.transform(x)
 
 # preprocessing function wrapper
 def electrode_wrapper(pt,rid_hup):
@@ -232,7 +294,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
@@ -273,7 +335,7 @@ def main():
         # Preprocess the signal
         inter, fs = preprocess_for_detection(inter,fs,montage,2)
         # Training selected model
-        if mdl_str == 'LSTM':
+        if mdl_str in ['LSTM','LSTMX']:
             ###
             # Instantiate the model
             input_size = inter.shape[1]
@@ -285,7 +347,10 @@ def main():
             # ccheck = False
 
             # Initialize the model
-            model = LSTMModel(input_size, hidden_size, output_size)
+            if mdl_str == 'LSTM':
+                model = LSTMModel(input_size, hidden_size)
+            elif mdl_str == 'LSTMX':
+                model = LSTMX(input_size,hidden_size)
             if ccheck:
                 model.cuda()
             
@@ -297,7 +362,7 @@ def main():
             # Prepare input and target data for the LSTM
             input_data,target_data = prepare_segment(inter)
 
-            dataset = TensorDataset(input_data, target_data)
+            dataset = TensorDataset(input_data, target_data)s
             full_batch = len(dataset)
             dataloader = DataLoader(dataset, batch_size=full_batch, shuffle=False)
             
@@ -312,11 +377,14 @@ def main():
             # Creating classification thresholds
             input_data,target_data = prepare_segment(inter)
             inter_outputs = predict_sz(model,input_data,target_data,batch_size=full_batch,ccheck=ccheck)
-            thresholds = np.percentile(inter_outputs,90,0)
+            thresholds = np.percentile(inter_outputs,95,0)
             ###
-        elif mdl_str == 'AbsSlp':
-            model = AbsSlope(1,.5, fs)
-            model.fit(inter)
+        elif mdl_str in ['NRG','AbsSlp']:
+            if mdl_str == 'AbsSlp':
+                model = AbsSlope(1,.5, fs)
+            elif mdl_str == 'NRG':
+                model = NRG(1,.5,fs)
+                model.fit(inter)
             
         # Iterating through each seizure for that patient
         seizure_times = seizures_df[seizures_df.Patient == pt]
@@ -336,7 +404,7 @@ def main():
             # Preprocess seizure for seizure detection task
             seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,factor=FACTOR)
             
-            if mdl_str == 'LSTM':
+            if mdl_str in ['LSTM','LSTMX']:
                 ###
                 seizure_z = model.scaler_transform(seizure)
                 seizure = pd.DataFrame(seizure_z,columns=seizure.columns)
@@ -349,12 +417,12 @@ def main():
                 # Creating classifications
                 mdl_outs = (raw_sz_vals.T > np.log(thresholds)).T.astype(float)
                 ###
-            elif mdl_str == 'AbsSlp':
+            elif mdl_str in ['NRG','AbsSlp']:
                 mdl_outs = model(seizure)
                 time_wins = model.get_times(seizure)
 
             # Creating probabilities by temporally smoothing classification
-            sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1)
+            sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
             sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure.columns)
             time_df = pd.Series(time_wins,name='time')
             sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)

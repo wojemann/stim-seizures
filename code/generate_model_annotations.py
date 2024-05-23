@@ -37,7 +37,7 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_strs = ['LSTM','AbsSlp']
+    mdl_strs = ['LSTM','AbsSlp','LSTMX','NRG']
     clf_fs = 256
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
