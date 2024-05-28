@@ -36,7 +36,7 @@ def main():
     montage = 'bipolar'
     mdl_str = 'NRG'
     clf_fs = 256
-    final_thresh = 0.75
+    final_thresh = 0.95
     first_sz_idx_offset = 118
 
     # Iterating through each patient that we have annotations for

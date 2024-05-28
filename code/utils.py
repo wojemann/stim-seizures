@@ -690,8 +690,9 @@ def notch_filter(data: np.ndarray, fs: float) -> np.array:
         np.array: _description_
     """
     # remove 60Hz noise
-    b, a = iirnotch(60, 30, fs)
-    d, c = iirnotch(120, 30, fs)
+    b, a = iirnotch(60, 15, fs)
+    d, c = iirnotch(120, 15, fs)
+
     data_filt = filtfilt(b, a, data, axis=0)
     data_filt_filt = filtfilt(d, c, data_filt, axis = 0)
     # TODO: add option for causal filter
@@ -946,7 +947,7 @@ def ar_one(data):
         data_white[:, i] = data[1:, i] - (data[:-1, i]*w[0] + w[1])
     return data_white
 
-def preprocess_for_detection(data,fs,montage='bipolar',factor=2):
+def preprocess_for_detection(data,fs,montage='bipolar',target=256):
     # This function implements preprocessing steps for seizure detection
     chs = data.columns.to_list()
     ch_df = check_channel_types(chs)
@@ -960,14 +961,39 @@ def preprocess_for_detection(data,fs,montage='bipolar',factor=2):
     # Bandpass filtering
     b,a = sc.signal.butter(4,[3,55],btype='bandpass',fs = fs)
     data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
-    # data_bp_filt = notch_filter(data_bp_np,fs)
+
+    # data_bp_filt = notch_filter(data_bp_filt,fs)
     # data_bp_filt = bandpass_filter(data_bp_filt,fs,hi=100)
     # Down sampling
-    data_bpd = sc.signal.decimate(data_bp_filt,factor).T
-    fsd = int(fs/factor)
+    signal_len = int(data_bp_filt.shape[1]/fs*target)
+    data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
+    fsd = int(target)
     data_white = ar_one(data_bpd)
     data_white_df = pd.DataFrame(data_white,columns = bp_ch)
     return data_white_df,fsd
+
+def preprocess_for_wavenet(data,fs,montage='bipolar',target=128):
+    # This function implements preprocessing steps for seizure detection
+    chs = data.columns.to_list()
+    ch_df = check_channel_types(chs)
+    # Montage
+    if montage == 'bipolar':
+        data_bp_np,bp_ch_df = bipolar_montage(data.to_numpy().T,ch_df)
+        bp_ch = bp_ch_df.name.to_numpy()
+    elif montage == 'car':
+        data_bp_np = (data.to_numpy().T - np.mean(data.to_numpy(),1))
+        bp_ch = chs
+    
+    data_bp_notch = notch_filter(data_bp_np,fs)
+    data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=127)
+    signal_len = int(data_bp_filt.shape[1]/fs*target)
+    data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
+    fsd = int(target)
+    data_white = ar_one(data_bpd)
+    data_white_df = pd.DataFrame(data_white,columns = bp_ch)
+    return data_white_df,fsd
+    
+    
 
 def get_factor(fs,target=512):
     if fs%target != 0:
@@ -1367,3 +1393,4 @@ def load_config(config_path,HUP_flag=True):
     rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
     pt_list = patient_table.ptID.to_numpy()
     return usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list
+# %%
