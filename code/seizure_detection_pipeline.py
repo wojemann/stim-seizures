@@ -23,6 +23,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from tensorflow.keras.models import load_model
+import tensorflow as tf
 
 # OS imports
 import os
@@ -36,9 +38,16 @@ sys.path.append('/users/wojemann/iEEG_processing')
 plt.rcParams['image.cmap'] = 'magma'
 
 OVERWRITE = True
-TARGET = 256
 TRAIN_WIN = 12
 PRED_WIN = 1
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)  # Memory growth must be set before GPUs have been initialized
 
 # Functions for data formatting in autoregressive problem
 # prepare_segment turns interictal/seizure clip into input and target data for autoregression
@@ -66,6 +75,24 @@ def prepare_segment(data, fs = 256,train_win = 12, pred_win = 1, w_size = 1, w_s
     else:
         return input_data, target_data
 
+def prepare_wavenet_segment(data, fs = 128, w_size = 1, w_stride=0.5,ret_time=False):
+    data_ch = data.columns.to_list()
+    n_ch = len(data_ch)
+    data_np = data.to_numpy()
+    win_len_idx = w_size*fs
+    nwins = num_wins(len(data_np[:,0]),fs,w_size,w_stride)
+    data_mat = np.zeros((nwins,win_len_idx,len(data_ch)))
+    for k in range(n_ch): # Iterating through channels
+        samples = MovingWinClips(data_np[:,k],fs,w_size,w_stride)
+        data_mat[:,:,k] = samples
+    time_mat = MovingWinClips(np.arange(len(data))/fs,fs,w_size,w_stride)
+    win_times = time_mat[:,0]
+    data_flat = data_mat.transpose(0,2,1).reshape(-1,win_len_idx)
+    if ret_time:
+        return data_flat, win_times
+    else:
+        return data_flat
+    
 # predict_sz returns formatted data windows as distributions of MSE loss for each clip
 def predict_sz(model, input_data, target_data,batch_size=1,ccheck=False):
     dataset = TensorDataset(input_data,target_data)
@@ -206,6 +233,40 @@ class NRG():
     def __call__(self, *args):
         return self.forward(*args)
 
+class WVNT():
+    def __init__(self, mdl_path, win_size = 1, stride = 0.5, fs = 128):
+        self.win_size = win_size
+        self.stride = stride
+        self.fs = fs
+        self.mdl = load_model(mdl_path)
+    
+    def __str__(self) -> str:
+        return "WVNT"
+        
+    def fit(self, x):
+        # x should be samples x channels df
+        self.scaler = RobustScaler().fit(x)
+
+    def get_times(self, x):
+        # x should be samples x channels df
+        time_mat = MovingWinClips(np.arange(len(x))/self.fs,self.fs,self.win_size,self.stride)
+        return time_mat[:,0]
+
+    def forward(self, x):
+        # x is samples x channels df
+        chs = x.columns
+        nwins = num_wins(len(x),self.fs,1,0.5)
+        nch = len(chs)
+        x = pd.DataFrame(self.scaler.transform(x),columns=chs)
+        x = prepare_wavenet_segment(x)
+        y = self.mdl.predict(x)[:,1]
+        return y.reshape(nwins,nch).T
+        
+        
+    
+    def __call__(self, *args):
+        return self.forward(*args)
+
 class LSTMX(nn.Module):
     def __init__(self, num_channels, hidden_size):
         super(LSTMX, self).__init__()
@@ -297,14 +358,13 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
-    # mdl_str = 'LSTM'
 
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
@@ -335,9 +395,16 @@ def main():
         mask,_ = detect_bad_channels(inter.to_numpy(),fs)
         inter = inter.drop(inter.columns[~mask],axis=1)
 
-        # Preprocess the signal
-        inter, fs = preprocess_for_detection(inter,fs,montage,target=TARGET)
-        for mdl_str in ['LSTM','LSTMX']:#,'AbsSlp','NRG']:
+       
+        for mdl_str in ['AbsSlp']:#['LSTM','AbsSlp','NRG']: # 'LSTMX'
+             # Preprocess the signal
+            if mdl_str == 'WVNT':
+                target = 128
+                inter, fs = preprocess_for_wavenet(inter,fs,montage,target=target)
+            else:
+                target=256
+                inter, fs = preprocess_for_detection(inter,fs,montage,target=target)
+
             # Training selected model
             if mdl_str in ['LSTM','LSTMX']:
                 ###
@@ -382,12 +449,15 @@ def main():
                 inter_outputs = predict_sz(model,input_data,target_data,batch_size=full_batch,ccheck=ccheck)
                 thresholds = np.percentile(inter_outputs,85,0)
                 ###
-            elif mdl_str in ['NRG','AbsSlp']:
+            elif mdl_str in ['NRG','AbsSlp','WVNT']:
                 if mdl_str == 'AbsSlp':
                     model = AbsSlope(1,.5, fs)
                     model.fit(inter)
                 elif mdl_str == 'NRG':
                     model = NRG(1,.5,fs)
+                    model.fit(inter)
+                elif mdl_str == 'WVNT':
+                    model = WVNT(ospj(prodatapath,'WaveNet','v111.hdf5'),1,.5,fs)
                     model.fit(inter)
                 
             # Iterating through each seizure for that patient
@@ -402,11 +472,11 @@ def main():
                 seizure = seizure[neural_channels]
                 seizure = seizure.drop(seizure.columns[~mask],axis=1)
                 # Perform overwrite check
-                prob_path = f"probability_matrix_mdl-{model}_fs-{int(TARGET)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"probability_matrix_mdl-{model}_fs-{int(target)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
                 # Preprocess seizure for seizure detection task
-                seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,target=TARGET)
+                seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target)
                 
                 if mdl_str in ['LSTM','LSTMX']:
                     ###
@@ -421,7 +491,7 @@ def main():
                     # Creating classifications
                     mdl_outs = (raw_sz_vals.T > np.log(thresholds)).T.astype(float)
                     ###
-                elif mdl_str in ['NRG','AbsSlp']:
+                elif mdl_str in ['NRG','AbsSlp','WVNT']:
                     mdl_outs = model(seizure)
                     time_wins = model.get_times(seizure)
 
@@ -434,7 +504,7 @@ def main():
                 sz_prob_df.to_pickle(ospj(prodatapath,pt,prob_path))
                 # np.save(ospj(prodatapath,pt,prob_path),sz_prob)
                 # np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
-                first_detect = np.argmax(sz_prob[:,115:]>.5,axis=1)
+                first_detect = np.argmax(sz_prob[:,120:]>.75,axis=1)
                 first_detect[first_detect == 0] = sz_prob.shape[1]
                 ch_sorting = np.argsort(first_detect)
                 

@@ -34,9 +34,9 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_str = 'NRG'
+    mdl_str = 'AbsSlp'
     clf_fs = 256
-    final_thresh = 0.95
+    final_thresh = 0.75
     first_sz_idx_offset = 118
 
     # Iterating through each patient that we have annotations for
@@ -45,6 +45,7 @@ def main():
                         'model':[],
                         'stim':[],
                         'approximate_onset': [],
+                        'offset': [],
                         'threshold':[],
                         'ueo_chs_strict':[],
                         'ueo_chs_loose': [],
@@ -79,6 +80,7 @@ def main():
             predicted_channels['model'].append(mdl_str)
             predicted_channels['stim'].append(sz_row.stim)
             predicted_channels['approximate_onset'].append(sz_row.approximate_onset)
+            predicted_channels['offset'].append(sz_row.end)
             predicted_channels['threshold'].append(final_thresh)
             predicted_channels['all_channels'].append(np.array([s.split("-")[0] for s in prob_chs]).flatten())
             sz_clf_final = sz_prob > final_thresh

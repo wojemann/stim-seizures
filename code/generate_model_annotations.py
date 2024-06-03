@@ -37,8 +37,7 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_strs = ['LSTM','AbsSlp','LSTMX','NRG']
-    clf_fs = 256
+    mdl_strs = ['LSTM','AbsSlp','NRG','WVNT']
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
@@ -65,6 +64,7 @@ def main():
         for _,sz_row in qbar:
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
+                clf_fs = 128 if mdl_str == 'WVNT' else 256
                 prob_path = f"probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()

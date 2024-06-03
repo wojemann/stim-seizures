@@ -959,7 +959,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256):
         data_bp_np = (data.to_numpy().T - np.mean(data.to_numpy(),1))
         bp_ch = chs
     # Bandpass filtering
-    b,a = sc.signal.butter(4,[3,55],btype='bandpass',fs = fs)
+    b,a = sc.signal.butter(4,[3,40],btype='bandpass',fs = fs)
     data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
 
     # data_bp_filt = notch_filter(data_bp_filt,fs)
@@ -985,7 +985,7 @@ def preprocess_for_wavenet(data,fs,montage='bipolar',target=128):
         bp_ch = chs
     
     data_bp_notch = notch_filter(data_bp_np,fs)
-    data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=127)
+    data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=40)
     signal_len = int(data_bp_filt.shape[1]/fs*target)
     data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
     fsd = int(target)
