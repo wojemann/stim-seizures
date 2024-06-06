@@ -239,7 +239,8 @@ def clean_labels(channel_li: list, pt: str) -> list:
         i = i.replace("-", "")
         i = i.replace("GRID", "G")  # mne has limits on channel name size
         # standardizes channel names
-        regex_match = re.match(r"(\D+)(\d+)", i)
+        pattern = re.compile(r"([A-Za-z0-9]+?)(\d+)$")
+        regex_match = pattern.match(i)
 
         if regex_match is None:
             new_channels.append(i)
@@ -1379,7 +1380,7 @@ def set_seed(seed):
   torch.manual_seed(seed)
   random.seed(seed)
 
-def load_config(config_path,HUP_flag=True):
+def load_config(config_path,flag='HUP'):
     with open(config_path,'r') as f:
         CONFIG = json.load(f)
     usr = CONFIG["paths"]["iEEG_USR"]
@@ -1388,8 +1389,10 @@ def load_config(config_path,HUP_flag=True):
     prodatapath = CONFIG["paths"]["PROCESSED_DATA"]
     figpath = CONFIG["paths"]["FIGURES"]
     patient_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID').reset_index(drop=True)
-    if HUP_flag:
+    if flag == 'HUP':
         patient_table = patient_table[patient_table.ptID.apply(lambda x: x[:3]) == 'HUP']
+    elif flag == 'CHOP':
+        patient_table = patient_table[patient_table.ptID.apply(lambda x: x[:4]) == 'CHOP']
     rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
     pt_list = patient_table.ptID.to_numpy()
     return usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list

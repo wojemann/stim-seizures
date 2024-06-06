@@ -41,14 +41,6 @@ OVERWRITE = True
 TRAIN_WIN = 12
 PRED_WIN = 1
 
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    try:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-    except RuntimeError as e:
-        print(e)  # Memory growth must be set before GPUs have been initialized
-
 # Functions for data formatting in autoregressive problem
 # prepare_segment turns interictal/seizure clip into input and target data for autoregression
 def prepare_segment(data, fs = 256,train_win = 12, pred_win = 1, w_size = 1, w_stride=0.5,ret_time=False):
@@ -394,11 +386,17 @@ def main():
         # Detecting and removing excess noisy channels
         mask,_ = detect_bad_channels(inter.to_numpy(),fs)
         inter = inter.drop(inter.columns[~mask],axis=1)
-
        
         for mdl_str in ['AbsSlp']:#['LSTM','AbsSlp','NRG']: # 'LSTMX'
              # Preprocess the signal
             if mdl_str == 'WVNT':
+                gpus = tf.config.experimental.list_physical_devices('GPU')
+                if gpus:
+                    try:
+                        for gpu in gpus:
+                            tf.config.experimental.set_memory_growth(gpu, True)
+                    except RuntimeError as e:
+                        print(e)  # Memory growth must be set before GPUs have been initialized
                 target = 128
                 inter, fs = preprocess_for_wavenet(inter,fs,montage,target=target)
             else:
