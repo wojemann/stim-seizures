@@ -396,7 +396,7 @@ def main():
         inter = inter.drop(inter.columns[~mask],axis=1)
         inter_nopre = inter.copy()
        
-        for mdl_str in ['AbsSlp','NRG','WVNT']: # 'LSTMX'
+        for mdl_str in ['LSTM','AbsSlp','NRG','WVNT']: # 'LSTMX'
              # Preprocess the signal
             if mdl_str == 'WVNT':
                 target = 128

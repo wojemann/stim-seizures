@@ -691,8 +691,10 @@ def notch_filter(data: np.ndarray, fs: float) -> np.array:
         np.array: _description_
     """
     # remove 60Hz noise
-    b, a = iirnotch(60, 15, fs)
-    d, c = iirnotch(120, 15, fs)
+    # b, a = iirnotch(60, 15, fs)
+    # d, c = iirnotch(120, 15, fs)
+    b, a = butter(4,(58,62),'bandstop',fs=fs)
+    b, a = butter(4,(118,122),'bandstop',fs=fs)
 
     data_filt = filtfilt(b, a, data, axis=0)
     data_filt_filt = filtfilt(d, c, data_filt, axis = 0)

@@ -15,13 +15,13 @@ import mne
 from mne_bids import BIDSPath, write_raw_bids
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
 
 # Setting Seed
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -50,7 +50,7 @@ def main():
     # adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
     # seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
     seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
-
+    
     for pt, group in tqdm(
         seizures_df.groupby('Patient'),
         total=seizures_df.Patient.nunique(),
