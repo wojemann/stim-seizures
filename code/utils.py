@@ -516,12 +516,15 @@ def choptimize_localizations(recon_path,chopid):
     electrode_locals.loc[:,'name'] = clean_labels(electrode_locals.full_label,chopid)
     electrode_locals.loc[:,'index'] = pd.NA
     electrode_locals.loc[electrode_locals.brain_area == 'Unknown','brain_area'] = 'EmptyLabel'
-    electrode_locals["label"] = electrode_locals["brain_area"]
-    mapping = {"grey": "grey matter","white": "white matter","Unknown": "EmptyLabel"}
-    electrode_locals["matter"] = electrode_locals["matter"].replace(mapping)
-    col_list = ["name","x","y","z","label","isgrey","matter"]
+    electrode_regions = electrode_locals.copy()
+    electrode_regions["label"] = electrode_locals["brain_area"]
+    col_list = ["name","x","y","z","label","isgrey"]
+    electrode_regions = electrode_regions[col_list]
+    mapping = {"grey": "gray matter","white": "white matter","Unknown": "EmptyLabel"}
+    electrode_locals["label"] = electrode_locals["matter"].replace(mapping)
+    col_list = ["name","x","y","z","label","isgrey"]
     electrode_locals = electrode_locals[col_list]
-    return electrode_locals
+    return electrode_locals,electrode_regions
 
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
@@ -962,32 +965,7 @@ def ar_one(data):
         data_white[:, i] = data[1:, i] - (data[:-1, i]*w[0] + w[1])
     return data_white
 
-def preprocess_for_detection(data,fs,montage='bipolar',target=256):
-    # This function implements preprocessing steps for seizure detection
-    chs = data.columns.to_list()
-    ch_df = check_channel_types(chs)
-    # Montage
-    if montage == 'bipolar':
-        data_bp_np,bp_ch_df = bipolar_montage(data.to_numpy().T,ch_df)
-        bp_ch = bp_ch_df.name.to_numpy()
-    elif montage == 'car':
-        data_bp_np = (data.to_numpy().T - np.mean(data.to_numpy(),1))
-        bp_ch = chs
-    # Bandpass filtering
-    b,a = sc.signal.butter(4,[3,40],btype='bandpass',fs = fs)
-    data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
-
-    # data_bp_filt = notch_filter(data_bp_filt,fs)
-    # data_bp_filt = bandpass_filter(data_bp_filt,fs,hi=100)
-    # Down sampling
-    signal_len = int(data_bp_filt.shape[1]/fs*target)
-    data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
-    fsd = int(target)
-    data_white = ar_one(data_bpd)
-    data_white_df = pd.DataFrame(data_white,columns = bp_ch)
-    return data_white_df,fsd
-
-def preprocess_for_wavenet(data,fs,montage='bipolar',target=128):
+def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False, pre_mask = None):
     # This function implements preprocessing steps for seizure detection
     chs = data.columns.to_list()
     ch_df = check_channel_types(chs)
@@ -999,15 +977,39 @@ def preprocess_for_wavenet(data,fs,montage='bipolar',target=128):
         data_bp_np = (data.to_numpy().T - np.mean(data.to_numpy(),1))
         bp_ch = chs
     
-    data_bp_notch = notch_filter(data_bp_np,fs)
-    data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=127)
-    signal_len = int(data_bp_filt.shape[1]/fs*target)
-    data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
-    fsd = int(target)
+    # Channel rejection
+    if pre_mask is None:
+        mask,_ = detect_bad_channels(data_bp_np.T,fs)
+        data_bp_np = data_bp_np[mask,:]
+        bp_ch = bp_ch[mask]
+    else:
+        data_bp_np = data_bp_np[pre_mask,:]
+        bp_ch = bp_ch[pre_mask]
+    
+    if wavenet:
+        target=128
+        data_bp_notch = notch_filter(data_bp_np,fs)
+        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=127)
+        signal_len = int(data_bp_filt.shape[1]/fs*target)
+        data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
+        fsd = int(target)
+    else:
+        # Bandpass filtering
+        b,a = sc.signal.butter(4,[3,40],btype='bandpass',fs = fs)
+        data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
+
+        # data_bp_filt = notch_filter(data_bp_filt,fs)
+        # data_bp_filt = bandpass_filter(data_bp_filt,fs,hi=100)
+        # Down sampling
+        signal_len = int(data_bp_filt.shape[1]/fs*target)
+        data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
+        fsd = int(target)
     data_white = ar_one(data_bpd)
     data_white_df = pd.DataFrame(data_white,columns = bp_ch)
-    return data_white_df,fsd
-    
+    if pre_mask is None:
+        return data_white_df,fsd,mask
+    else:
+        return data_white_df,fsd
     
 
 def get_factor(fs,target=512):

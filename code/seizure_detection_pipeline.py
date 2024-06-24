@@ -37,7 +37,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = False
+OVERWRITE = True
 TRAIN_WIN = 12
 PRED_WIN = 1
 
@@ -314,10 +314,9 @@ def electrode_wrapper(pt,rid_hup,datapath):
         electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
         return electrode_localizations,electrode_regions
     else:
-        print('CHOP Patient')
         recon_path = ospj(datapath,pt,f'{pt}_locations.xlsx')
-        electrode_regions = choptimize_localizations(recon_path,pt)
-        return None,electrode_regions
+        electrode_localizations,electrode_regions = choptimize_localizations(recon_path,pt)
+        return electrode_localizations,electrode_regions
 
 # Train the model instance using provided data
 def train_model(model,dataloader,criterion,optimizer,num_epochs=100,ccheck=False):
@@ -364,7 +363,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),'CHOP')
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
@@ -387,29 +386,26 @@ def main():
         inter = inter[chn_labels]
         try:
             electrode_localizations,electrode_regions = electrode_wrapper(pt,rid_hup,datapath)
-            # electrode_localizations.name = clean_labels(electrode_localizations.name,pt) #don't end up using grey/white matter
+            if pt[:3] == 'CHO':
+                suffix = ['CHOPR','CHOPM']
+            else:
+                suffix = ['dkt','atropos']
+            electrode_localizations.name = clean_labels(electrode_localizations.name,pt) #don't end up using grey/white matter
             electrode_regions.name = clean_labels(electrode_regions.name,pt)
-            # electrode_localizations.to_pickle(ospj(prodatapath,pt,'electrode_localizations_atropos.pkl')) #don't end up using grey/white matter
-            electrode_regions.to_pickle(ospj(prodatapath,pt,'electrode_localizations_dkt.pkl'))
+            electrode_localizations.to_pickle(ospj(prodatapath,pt,f'electrode_localizations_{suffix[1]}.pkl')) #don't end up using grey/white matter
+            electrode_regions.to_pickle(ospj(prodatapath,pt,f'electrode_localizations_{suffix[0]}.pkl'))
             neural_channels = electrode_localizations.name[(electrode_localizations.name.isin(inter.columns)) & ((electrode_localizations.label == 'white matter') | (electrode_localizations.label == 'gray matter'))]
         except:
             print(f"electrode localization failed for {pt}")
             neural_channels = chn_labels
         inter = inter.loc[:,neural_channels]
-
-        # Detecting and removing excess noisy channels
-        mask,_ = detect_bad_channels(inter.to_numpy(),fs)
-        inter = inter.drop(inter.columns[~mask],axis=1)
         inter_nopre = inter.copy()
        
         for mdl_str in ['LSTM','AbsSlp','NRG','WVNT']: # 'LSTMX'
-             # Preprocess the signal
-            if mdl_str == 'WVNT':
-                target = 128
-                inter, fs = preprocess_for_wavenet(inter_nopre,fs,montage,target=target)
-            else:
-                target=256
-                inter, fs = preprocess_for_detection(inter_nopre,fs,montage,target=target)
+            wvcheck = mdl_str=='WVNT'
+            # Preprocess the signal
+            target=256
+            inter, fs, mask = preprocess_for_detection(inter_nopre,fs,montage,target=target,wavenet=wvcheck,pre_mask = None)
 
             # Training selected model
             if mdl_str in ['LSTM','LSTMX']:
@@ -476,13 +472,13 @@ def main():
                 seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
                 # Filter out bad channels from interictal clip
                 seizure = seizure[neural_channels]
-                seizure = seizure.drop(seizure.columns[~mask],axis=1)
                 # Perform overwrite check
                 prob_path = f"probability_matrix_mdl-{model}_fs-{int(target)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
+                
                 # Preprocess seizure for seizure detection task
-                seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target)
+                seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
                 
                 if mdl_str in ['LSTM','LSTMX']:
                     ###
