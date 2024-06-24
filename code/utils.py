@@ -511,6 +511,18 @@ def optimize_localizations(path_to_recon,RID):
 
     return modified_atropos_df,modified_dkt_df
 
+def choptimize_localizations(recon_path,chopid):
+    electrode_locals = pd.read_excel(recon_path,f'{chopid}_locations')
+    electrode_locals.loc[:,'name'] = clean_labels(electrode_locals.full_label,chopid)
+    electrode_locals.loc[:,'index'] = pd.NA
+    electrode_locals.loc[electrode_locals.brain_area == 'Unknown','brain_area'] = 'EmptyLabel'
+    electrode_locals["label"] = electrode_locals["brain_area"]
+    mapping = {"grey": "grey matter","white": "white matter","Unknown": "EmptyLabel"}
+    electrode_locals["matter"] = electrode_locals["matter"].replace(mapping)
+    col_list = ["name","x","y","z","label","isgrey","matter"]
+    electrode_locals = electrode_locals[col_list]
+    return electrode_locals
+
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
 BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_bids.csv"
@@ -694,7 +706,7 @@ def notch_filter(data: np.ndarray, fs: float) -> np.array:
     # b, a = iirnotch(60, 15, fs)
     # d, c = iirnotch(120, 15, fs)
     b, a = butter(4,(58,62),'bandstop',fs=fs)
-    b, a = butter(4,(118,122),'bandstop',fs=fs)
+    d, c = butter(4,(118,122),'bandstop',fs=fs)
 
     data_filt = filtfilt(b, a, data, axis=0)
     data_filt_filt = filtfilt(d, c, data_filt, axis = 0)
@@ -988,7 +1000,7 @@ def preprocess_for_wavenet(data,fs,montage='bipolar',target=128):
         bp_ch = chs
     
     data_bp_notch = notch_filter(data_bp_np,fs)
-    data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=40)
+    data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=127)
     signal_len = int(data_bp_filt.shape[1]/fs*target)
     data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
     fsd = int(target)

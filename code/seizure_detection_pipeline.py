@@ -37,7 +37,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = True
+OVERWRITE = False
 TRAIN_WIN = 12
 PRED_WIN = 1
 
@@ -295,23 +295,29 @@ class LSTMX(nn.Module):
         return self.scaler.transform(x)
 
 # localization function wrapper
-def electrode_wrapper(pt,rid_hup):
-    hup_no = pt[3:]
-    rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
-    rid = str(rid)
-    if len(rid) < 4:
-        rid = '0' + rid
-    recon_path = ospj('/mnt','leif','littlab','data',
-                        'Human_Data','CNT_iEEG_BIDS',
-                        f'sub-RID{rid}','derivatives','ieeg_recon',
-                        'module3/')
-    if not os.path.exists(recon_path):
-        recon_path =  ospj('/mnt','leif','littlab','data',
-                        'Human_Data','recon','BIDS_penn',
-                        f'sub-RID{rid}','derivatives','ieeg_recon',
-                        'module3/')
-    electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
-    return electrode_localizations,electrode_regions
+def electrode_wrapper(pt,rid_hup,datapath):
+    if pt[:3] == 'HUP':
+        hup_no = pt[3:]
+        rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
+        rid = str(rid)
+        if len(rid) < 4:
+            rid = '0' + rid
+        recon_path = ospj('/mnt','leif','littlab','data',
+                            'Human_Data','CNT_iEEG_BIDS',
+                            f'sub-RID{rid}','derivatives','ieeg_recon',
+                            'module3/')
+        if not os.path.exists(recon_path):
+            recon_path =  ospj('/mnt','leif','littlab','data',
+                            'Human_Data','recon','BIDS_penn',
+                            f'sub-RID{rid}','derivatives','ieeg_recon',
+                            'module3/')
+        electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
+        return electrode_localizations,electrode_regions
+    else:
+        print('CHOP Patient')
+        recon_path = ospj(datapath,pt,f'{pt}_locations.xlsx')
+        electrode_regions = choptimize_localizations(recon_path,pt)
+        return None,electrode_regions
 
 # Train the model instance using provided data
 def train_model(model,dataloader,criterion,optimizer,num_epochs=100,ccheck=False):
@@ -358,7 +364,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 def main():
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'))
+    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),'CHOP')
 
     seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
 
@@ -380,10 +386,10 @@ def main():
         chn_labels = remove_scalp_electrodes(inter.columns)
         inter = inter[chn_labels]
         try:
-            electrode_localizations,electrode_regions = electrode_wrapper(pt,rid_hup)
-            electrode_localizations.name = clean_labels(electrode_localizations.name,pt)
+            electrode_localizations,electrode_regions = electrode_wrapper(pt,rid_hup,datapath)
+            # electrode_localizations.name = clean_labels(electrode_localizations.name,pt) #don't end up using grey/white matter
             electrode_regions.name = clean_labels(electrode_regions.name,pt)
-            electrode_localizations.to_pickle(ospj(prodatapath,pt,'electrode_localizations_atropos.pkl'))
+            # electrode_localizations.to_pickle(ospj(prodatapath,pt,'electrode_localizations_atropos.pkl')) #don't end up using grey/white matter
             electrode_regions.to_pickle(ospj(prodatapath,pt,'electrode_localizations_dkt.pkl'))
             neural_channels = electrode_localizations.name[(electrode_localizations.name.isin(inter.columns)) & ((electrode_localizations.label == 'white matter') | (electrode_localizations.label == 'gray matter'))]
         except:

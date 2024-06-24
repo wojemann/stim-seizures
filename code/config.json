@@ -145,7 +145,7 @@
     "ieeg_ids": ["CHOPCCEP_005","CHOP005"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP005",14190.17]
     },
     {"ptID": "CHOP010",
     "ieeg_ids": ["CHOPCCEP_010","CHOP010a","CHOP010b","CHOP010c"],
@@ -157,37 +157,31 @@
     "ieeg_ids": ["CHOPCCEP_024","CHOP024"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP024",112138.27]
     },
     {"ptID": "CHOP026",
     "ieeg_ids": ["CHOPCCEP_026","CHOP026"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP026",76411.33]
     },
     {"ptID": "CHOP028",
     "ieeg_ids": ["CHOPCCEP_028","CHOP028"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP028",7517.56]
     },
     {"ptID": "CHOP035",
     "ieeg_ids": ["CHOPCCEP_035","CHOP035"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
-    },
-    {"ptID": "CHOP036",
-    "ieeg_ids": ["CHOPCCEP_036","CHOP036"],
-    "lf_stim": 1,
-    "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP035",82282.00]
     },
     {"ptID": "CHOP037",
     "ieeg_ids": ["CHOPCCEP_037","CHOP037"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP037",58173.01]
     },
     {"ptID": "CHOP038",
     "ieeg_ids": ["CHOPCCEP_038","CHOP038"],
@@ -198,29 +192,23 @@
     {"ptID": "CHOP041",
     "ieeg_ids": ["CHOPCCEP_041","CHOP041"],
     "lf_stim": 1,
-    "hf_stim": 0,
-    "interictal_training": []
+    "hf_stim": 1,
+    "interictal_training": ["CHOP041",112959.70]
     },
     {"ptID": "CHOP044",
     "ieeg_ids": ["CHOPCCEP_044","CHOP044"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP044",4070.79]
     },
     {"ptID": "CHOP045",
     "ieeg_ids": ["CHOPCCEP_045","CHOP045"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP045",13156.41]
     },
     {"ptID": "CHOP046",
     "ieeg_ids": ["CHOPCCEP_046","CHOP046"],
-    "lf_stim": 1,
-    "hf_stim": 0,
-    "interictal_training": []
-    },
-    {"ptID": "CHOP047",
-    "ieeg_ids": ["CHOPCCEP_047","CHOP047"],
     "lf_stim": 1,
     "hf_stim": 0,
     "interictal_training": []
@@ -229,7 +217,7 @@
     "ieeg_ids": ["CHOPCCEP_049","CHOP049"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP049",8313.95]
     }
 ]
 }

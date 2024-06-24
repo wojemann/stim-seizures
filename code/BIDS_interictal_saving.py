@@ -16,13 +16,13 @@ from mne_bids import BIDSPath, write_raw_bids
 
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'))
+usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
 
 # Setting Seed
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -94,12 +94,9 @@ def main():
 
         # minimal preprocessing
         data_np = data.to_numpy().T
-
-        data_np_notch = notch_filter(data_np,fs)
-        data_np_filt = bandpass_filter(data_np_notch,fs,order=3,lo=1,hi=100)
-        factor = get_factor(fs,TARGET)
-        data_np_ds = sc.signal.decimate(data_np_filt,factor)
-        fs /= factor
+        signal_len = int(data_np.shape[1]/fs*TARGET)
+        data_np_ds = sc.signal.resample(data_np,signal_len,axis=1)
+        fs = TARGET
 
 
         # save the data
