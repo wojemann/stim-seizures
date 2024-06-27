@@ -528,7 +528,7 @@ def choptimize_localizations(recon_path,chopid):
 
 def get_rpath(prodatapath,pt):
     if pt[:3] == 'CHO':
-        region_path = ospj(prodatapath,pt,'electrode_localizations_CHOPR')
+        region_path = ospj(prodatapath,pt,'electrode_localizations_CHOPR.pkl')
     else:
         region_path = ospj(prodatapath,pt,'electrode_localizations_dkt.pkl')
     return region_path
