@@ -526,6 +526,12 @@ def choptimize_localizations(recon_path,chopid):
     electrode_locals = electrode_locals[col_list]
     return electrode_locals,electrode_regions
 
+def get_rpath(prodatapath,pt):
+    if pt[:3] == 'CHO':
+        region_path = ospj(prodatapath,pt,'electrode_localizations_CHOPR')
+    else:
+        region_path = ospj(prodatapath,pt,'electrode_localizations_dkt.pkl')
+    return region_path
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
 BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_bids.csv"
@@ -1029,7 +1035,11 @@ def remove_scalp_electrodes(raw_labels):
                   'T03','T04','T05','T06',
                   'EKG01','EKG02',
                   'ROC','LOC',
-                  'EMG01','EMG02']
+                  'EMG01','EMG02',
+                  'DC01','DC07'
+                  ]
+    chop_scalp = ['C1'+str(x) for x in range(19,29)]
+    scalp_list += chop_scalp
     return [l for l in raw_labels if l not in scalp_list]
 ################################################ Feature Extraction ################################################
 

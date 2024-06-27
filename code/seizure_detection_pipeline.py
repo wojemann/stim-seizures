@@ -370,13 +370,19 @@ def main():
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
-
+    pt_skip = True
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:   
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
         # Skipping if no training data has been identified
+        # Creating code to jest some patinets
+        # if (pt != 'CHOP028') and pt_skip:
+        #     continue
+        # else:
+        #     pt_skip = True
+        # End patient tes
         if len(row.interictal_training) == 0:
             continue
         # Loading data from bids
@@ -401,7 +407,7 @@ def main():
         inter = inter.loc[:,neural_channels]
         inter_nopre = inter.copy()
        
-        for mdl_str in ['LSTM','AbsSlp','NRG','WVNT']: # 'LSTMX'
+        for mdl_str in  ['WVNT']:#['LSTM','AbsSlp','NRG','WVNT']:
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=256
@@ -472,14 +478,16 @@ def main():
                 seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
                 # Filter out bad channels from interictal clip
                 seizure = seizure[neural_channels]
-                # Perform overwrite check
-                prob_path = f"probability_matrix_mdl-{model}_fs-{int(target)}_montage-{montage}_task-{task}_run-{run}.pkl"
-                if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
-                    continue
                 
                 # Preprocess seizure for seizure detection task
                 seizure, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
                 
+                # Perform overwrite check
+                prob_path = f"probability_matrix_mdl-{model}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
+                    continue
+
+
                 if mdl_str in ['LSTM','LSTMX']:
                     ###
                     seizure_z = model.scaler_transform(seizure)
