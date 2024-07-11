@@ -407,7 +407,7 @@ def main():
         inter = inter.loc[:,neural_channels]
         inter_nopre = inter.copy()
        
-        for mdl_str in  ['WVNT']:#['LSTM','AbsSlp','NRG','WVNT']:
+        for mdl_str in  ['LSTM','AbsSlp','NRG','WVNT']:
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=256
@@ -486,7 +486,6 @@ def main():
                 prob_path = f"probability_matrix_mdl-{model}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
-
 
                 if mdl_str in ['LSTM','LSTMX']:
                     ###

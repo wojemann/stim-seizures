@@ -1017,12 +1017,6 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
         return data_white_df,fsd
     
 
-def get_factor(fs,target=512):
-    if fs%target != 0:
-        print("FS not divisible by target, will perform \
-              integer division and new fs may not match target")
-    return int(fs // target)
-
 def remove_scalp_electrodes(raw_labels):
     scalp_list = ['Cz','Fz','Pz',
                   'A01','A02',

@@ -85,6 +85,8 @@ def main():
                 
                 # Find closest index to consensus onset time relative to actual onset time (consensus - approximate and find closest to 120 + diff)
                 onset_index = np.argmin(np.abs((time_wins-60) + time_diff))
+                # Find closest index to consensus 10 second spread time
+                spread_index = np.argmin(np.abs((time_wins-70) + time_diff))
                 # sweep threshold
                 for final_thresh in np.linspace(0,1,int(1/0.05)+1):
                     predicted_channels['Patient'].append(sz_row.Patient)
@@ -107,7 +109,7 @@ def main():
                     mdl_ueo_ch_loose = np.unique(np.array([s.split("-") for s in mdl_ueo_ch_bp]).flatten())
                     predicted_channels['ueo_chs_strict'].append(mdl_ueo_ch_strict)
                     predicted_channels['ueo_chs_loose'].append(mdl_ueo_ch_loose)
-                    mdl_sec_idx = np.where(np.sum(sz_clf_final[:, onset_index+10:onset_index + 13], axis=1) > 0)[0]
+                    mdl_sec_idx = np.where(np.sum(sz_clf_final[:, spread_index:spread_index + 3], axis=1) > 0)[0]
                     mdl_sec_ch_bp = prob_chs[mdl_sec_idx]
                     mdl_sec_ch_strict = np.array([s.split("-")[0] for s in mdl_sec_ch_bp]).flatten()
                     mdl_sec_ch_loose = np.unique(np.array([s.split("-") for s in mdl_sec_ch_bp]).flatten())
