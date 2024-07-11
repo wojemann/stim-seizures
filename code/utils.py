@@ -532,6 +532,31 @@ def get_rpath(prodatapath,pt):
     else:
         region_path = ospj(prodatapath,pt,'electrode_localizations_dkt.pkl')
     return region_path
+
+def surgical_parcellation(electrode_regions):
+    for i,row in electrode_regions.iterrows():
+        label = row.label
+        if isinstance(label,float):
+            label = "EmptyLabel"
+        label = label.lower()
+        if ("emptylabel" in label) or ("white" in label):
+            surgical_label = "EmptyLabel"
+        elif ("amygdala" in label) or ("hippocampus" in label):
+            if "left" in label:
+                surgical_label = 'left mesial temporal'
+            else:
+                surgical_label = 'right mesial temporal'
+        elif ("temporal" in label) or ("fusiform" in label) or ("entorhinal" in label) or ("parahippocampal" in label):
+            if "left" in label:
+                surgical_label = 'left temporal neocortex'
+            else:
+                surgical_label = 'right temporal neocortex'
+        else:
+            if "left" in label:
+                surgical_label = 'left other neocortex'
+            else:
+                surgical_label = 'right other neocortex'
+        electrode_regions.loc[i,"surgical_label"] = surgical_label
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
 BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_bids.csv"
