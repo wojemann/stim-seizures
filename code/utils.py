@@ -556,7 +556,8 @@ def surgical_parcellation(electrode_regions):
                 surgical_label = 'left other neocortex'
             else:
                 surgical_label = 'right other neocortex'
-        electrode_regions.loc[i,"surgical_label"] = surgical_label
+        electrode_regions.loc[i,"label"] = surgical_label
+    return electrode_regions
 ######################## BIDS ########################
 BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
 BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_bids.csv"
