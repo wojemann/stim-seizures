@@ -212,8 +212,8 @@ class NRG():
     def fit(self, x):
         # x should be samples x channels df
         self.scaler = RobustScaler().fit(x)
-        nx = self.scaler.transform(x)
-        self.nstds = np.std(nx,axis=0)
+        self.inter = self.scaler.transform(x)
+        self.nstds = np.std(self.inter,axis=0)
 
     def get_times(self, x):
         # x should be samples x channels df
@@ -370,7 +370,7 @@ def main():
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
-    pt_skip = True
+    # pt_skip = True
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:   
@@ -390,7 +390,7 @@ def main():
         # Pruning channels
         chn_labels = remove_scalp_electrodes(inter.columns)
         inter = inter[chn_labels]
-        try:
+        try: # channel localization exception catch
             electrode_localizations,electrode_regions = electrode_wrapper(pt,rid_hup,datapath)
             if pt[:3] == 'CHO':
                 suffix = ['CHOPR','CHOPM']
