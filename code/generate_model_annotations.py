@@ -58,13 +58,14 @@ def main():
         pbar.set_description(desc=f"Patient -- {pt}",refresh=True)
         if len(row.interictal_training) == 0:
             continue
-        seizure_times = seizures_df[seizures_df.Patient == pt]
+        seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
         
         for _,sz_row in qbar:
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
-                clf_fs = 128 if mdl_str == 'WVNT' else 256
+                # clf_fs = 128 if mdl_str == 'WVNT' else 256
+                clf_fs = 128
                 prob_path = f"probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()

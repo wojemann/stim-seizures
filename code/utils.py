@@ -743,8 +743,8 @@ def notch_filter(data: np.ndarray, fs: float) -> np.array:
     b, a = butter(8,(58,62),'bandstop',fs=fs)
     d, c = butter(8,(118,122),'bandstop',fs=fs)
 
-    data_filt = filtfilt(b, a, data, axis=0)
-    data_filt_filt = filtfilt(d, c, data_filt, axis = 0)
+    data_filt = filtfilt(b, a, data, axis=-1)
+    data_filt_filt = filtfilt(d, c, data_filt, axis = -1)
     # TODO: add option for causal filter
     # TODO: add optional argument for order
 
@@ -1030,7 +1030,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
         # b,a = sc.signal.butter(4,[3,40],btype='bandpass',fs = fs)
         # data_bp_filt = sc.signal.filtfilt(b,a,data_bp_np,axis=1)
         data_bp_notch = notch_filter(data_bp_np,fs)
-        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=3,hi=127)
+        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=3,hi=55)
         # Down sampling
         signal_len = int(data_bp_filt.shape[1]/fs*target)
         data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T

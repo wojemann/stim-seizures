@@ -1,17 +1,17 @@
 {"paths": {"META": "/mnt/leif/littlab/users/wojemann/stim-seizures/", 
 "RAW_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/RAW_DATA", 
 "PROCESSED_DATA": "/mnt/leif/littlab/users/wojemann/stim-seizures/PROCESSED_DATA",
-"FIGURES": "/mnt/leif/littlab/users/wojemann/stim-seizures/figures",
+"FIGURES": "/mnt/leif/littlab/users/wojemann/stim-seizures/figures/test_figures",
 "iEEG_USR": "wojemann", 
 "iEEG_PWD": "/mnt/leif/littlab/users/wojemann/woj_ieeglogin.bin"}, 
 "patients": [
-    {"ptID": "HUP266",
-    "ieeg_ids": ["HUP266_phaseII","HUP266_CCEP"],
+    {"ptID": "HUP246",
+    "ieeg_ids": ["HUP246_phaseII","HUP246_CCEP"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "typical": 0,
-    "mtle": 0,
-    "interictal_training": ["HUP266_phaseII",25165]
+    "typical": 1,
+    "mtle": 1,
+    "interictal_training": ["HUP246_phaseII",100000]
     }
 ]
 }
