@@ -15,13 +15,13 @@ import mne
 from mne_bids import BIDSPath, write_raw_bids
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
+usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'),flag=None)
 
 # Setting Seed
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -50,14 +50,14 @@ def main():
     # adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
     # seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
     seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
-    
+    bad_ch_dict = dict()
     for pt, group in tqdm(
         seizures_df.groupby('Patient'),
         total=seizures_df.Patient.nunique(),
         desc="Patients",
         position=0,
     ):
-        
+        bad_ch_dict[pt] = set()
         ieegid = group.groupby('IEEGname').ngroup().astype(int)
         seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
         group.loc[ieegid.index,'IEEGID'] = ieegid
@@ -103,6 +103,10 @@ def main():
 
             # clean the labels
             data.columns = clean_labels(data.columns, pt=pt)
+            
+            # remove scalp and ekg electrodes
+            no_scalp_labels = remove_scalp_electrodes(data.columns)
+            data = data.loc[:,no_scalp_labels]
 
             # if there are duplicate labels, keep the first one in the table
             data = data.loc[:, ~data.columns.duplicated()]
@@ -115,13 +119,17 @@ def main():
 
             # minimal preprocessing
             data_np = data.to_numpy().T
-
             data_np_notch = notch_filter(data_np,fs)
-            data_np_filt = bandpass_filter(data_np_notch,fs,order=3,lo=1,hi=100)
-            factor = get_factor(fs,TARGET)
-            data_np_ds = sc.signal.decimate(data_np_filt,factor)
-            fs /= factor
+            # data_np_filt = bandpass_filter(data_np_notch,fs,order=3,lo=1,hi=100)
+            signal_len = int(data_np_notch.shape[1]/fs*TARGET)
+            data_np_ds = sc.signal.resample(data_np_notch,signal_len,axis=1)
+            fs = TARGET
 
+            # detect bad channels
+            if row.stim == 0:
+                ch_mask,_ = detect_bad_channels(data_np_ds.T,fs)
+                bad_ch = data.columns[~ch_mask].to_list()
+                bad_ch_dict[pt].update(bad_ch)
 
             # save the data
             # run is the iEEG file number
@@ -154,6 +162,8 @@ def main():
                     format="EDF",
                 )
     seizures_df.to_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
-
+    # Save to a JSON file
+    with open(ospj(prodatapath,'bad_ch_dict.pkl'), 'wb') as f:
+        pickle.dump(bad_ch_dict, f)
 if __name__ == "__main__":
     main()

@@ -184,8 +184,8 @@ class AbsSlope():
         slopes = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
         scaled_slopes = slopes.squeeze()/np.expand_dims(self.nstds,1)*self.fs
         scaled_slopes = scaled_slopes.squeeze()
-        # normalized_slopes = scale_normalized(scaled_slopes)
-        normalized_slopes = minmax_scale(scaled_slopes.reshape(-1,1)).reshape(scaled_slopes.shape)
+        normalized_slopes = scale_normalized(scaled_slopes,15)
+        # normalized_slopes = minmax_scale(scaled_slopes.reshape(-1,1)).reshape(scaled_slopes.shape)
         return normalized_slopes
     
     def __call__(self, *args):
@@ -220,8 +220,8 @@ class NRG():
         x = x.T
         nrg = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
         nrg = nrg.squeeze()
-        # normalized_nrg = scale_normalized(nrg)
-        normalized_nrg = minmax_scale(nrg.reshape(-1,1)).reshape(nrg.shape)
+        normalized_nrg = scale_normalized(nrg,15)
+        # normalized_nrg = minmax_scale(nrg.reshape(-1,1)).reshape(nrg.shape)
         return normalized_nrg
     
     def __call__(self, *args):
@@ -346,7 +346,8 @@ def scale_normalized(data,m=5):
 def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
     plt.subplots(figsize=(48,24))
     plt.imshow(mat)
-    plt.axvline(120,linestyle = '--',color = 'white')
+    plt.axvline(np.argwhere(np.ceil(win_times)==60)[0])
+
     plt.xlabel('Time (s)')
     plt.yticks(np.arange(len(yticks)),yticks,rotation=0,fontsize=10)
     plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-60)
@@ -408,7 +409,7 @@ def main():
         inter_raw = inter_raw.loc[:,neural_channels]
         inter_nopre = inter_raw.copy()
        
-        for mdl_str in  ['LSTM','AbsSlp','NRG','WVNT']:
+        for mdl_str in  ['AbsSlp','LSTM','NRG','WVNT']:
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=128
@@ -506,7 +507,10 @@ def main():
                     time_wins = model.get_times(seizure_pre)
 
                 # Creating probabilities by temporally smoothing classification
-                sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
+                if mdl_str in ['LSTM','WVNT']:
+                    sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
+                else:
+                    sz_prob = mdl_outs
                 sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure_pre.columns)
                 time_df = pd.Series(time_wins,name='time')
                 sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)
@@ -515,7 +519,8 @@ def main():
                 ### Visualization
                 # np.save(ospj(prodatapath,pt,prob_path),sz_prob)
                 # np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
-                first_detect = np.argmax(sz_prob[:,120:]>.75,axis=1)
+                detect_idx = np.argwhere(np.ceil(time_wins)==60)[0]
+                first_detect = np.argmax(sz_prob[:,int(detect_idx):]>.75,axis=1)
                 first_detect[first_detect == 0] = sz_prob.shape[1]
                 ch_sorting = np.argsort(first_detect)
                 

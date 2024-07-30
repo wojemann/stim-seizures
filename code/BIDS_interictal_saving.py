@@ -54,7 +54,7 @@ def main():
         pt = row.ptID
         ieeg_name = row.interictal_training[0]
         onset = row.interictal_training[1]
-        offset = onset + 10
+        offset = onset + 60
         # Throwing error because there are no seizures that exist for this patient. So one option would be to save BIDS IEEGIDs into the config and access that from there.
         ieegid = int(seizures_df.loc[seizures_df.IEEGname == ieeg_name,'IEEGID'].mode())
         # get bids path

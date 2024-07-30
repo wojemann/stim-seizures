@@ -89,7 +89,7 @@ def main():
                 # Find closest index to consensus 10 second spread time
                 spread_index = np.argmin(np.abs((time_wins-70) + time_diff))
                 # sweep threshold
-                for final_thresh in np.linspace(0,1,int(1/0.05)+1):
+                for final_thresh in np.linspace(0,1,int(1/0.01)+1):
                     predicted_channels['Patient'].append(sz_row.Patient)
                     predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
                     predicted_channels['model'].append(mdl_str)

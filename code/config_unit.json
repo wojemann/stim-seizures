@@ -12,6 +12,14 @@
     "typical": 1,
     "mtle": 1,
     "interictal_training": ["HUP246_phaseII",100000]
+    },
+    {"ptID": "HUP263",
+    "ieeg_ids": ["HUP263_phaseII","HUP263_CCEP"],
+    "lf_stim": 1,
+    "hf_stim": 1,
+    "typical": 1,
+    "mtle": 1,
+    "interictal_training": ["HUP263_phaseII",28040]
     }
 ]
 }

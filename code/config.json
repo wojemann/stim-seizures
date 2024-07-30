@@ -11,6 +11,8 @@
     "hf_stim": 0,
     "typical": 0,
     "mtle": 1,
+    "focality":1,
+    "laterality":2,
     "interictal_training": ["HUP224_phaseII",5915]
     },
     {"ptID": "HUP225",
@@ -19,6 +21,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 0,
+    "focality":0,
+    "laterality":1,
     "interictal_training": ["HUP225_phaseII",71207]
     },
     {"ptID": "HUP229",
@@ -26,7 +30,9 @@
     "lf_stim": 1,
     "hf_stim": 0,
     "typical": 1,
-    "mtle": 1, 
+    "mtle": 1,
+    "focality":0,
+    "laterality":0,
     "interictal_training": ["HUP229_phaseII",149146]
     },
     {"ptID": "HUP230",
@@ -35,6 +41,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 1,
+    "focality":0,
+    "laterality":0,
     "interictal_training":["HUP230_phaseII",25350]
     },
     {"ptID": "HUP235",
@@ -43,6 +51,8 @@
     "hf_stim": 1,
     "typical": 1,
     "mtle": 1,
+    "focality":0,
+    "laterality":0,
     "interictal_training": ["HUP235_phaseII",307651]
     },
     {"ptID": "HUP238",
@@ -51,6 +61,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 1,
+    "focality": 0,
+    "laterality": 0,
     "interictal_training": ["HUP238_phaseII",100011]
     },
     {"ptID": "HUP246",
@@ -59,6 +71,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 1,
+    "focality": 0,
+    "laterality": 0,
     "interictal_training": ["HUP246_phaseII",100000]
     },
     {"ptID": "HUP247",
@@ -67,6 +81,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 0,
+    "focality": 0,
+    "laterality": 1,
     "interictal_training": ["HUP247_phaseII",17590]
     },
     {"ptID": "HUP249",
@@ -75,6 +91,8 @@
     "hf_stim": 0,
     "typical": 0,
     "mtle": 0,
+    "focality": 1,
+    "laterality": 2,
     "interictal_training": ["HUP249_phaseII",24112]
     },
     {"ptID": "HUP250",
@@ -83,6 +101,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 0,
+    "focality": 2,
+    "laterality": 3,
     "interictal_training": ["HUP250_phaseII",24841]
     },
     {"ptID": "HUP253",
@@ -91,6 +111,8 @@
     "hf_stim": 0,
     "typical": 0,
     "mtle": 1,
+    "focality": 0,
+    "laterality": 1,
     "interictal_training": ["HUP253_phaseII",77624]
     },
     {"ptID": "HUP257",
@@ -99,6 +121,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 1,
+    "focality": 0,
+    "laterality": 1,
     "interictal_training": ["HUP257_phaseII",15600]
     },
     {"ptID": "HUP261",
@@ -107,6 +131,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 1,
+    "focality": 0,
+    "laterality": 0,
     "interictal_training": ["HUP261_phaseII",3356.07]
     },
     {"ptID": "HUP263",
@@ -115,6 +141,8 @@
     "hf_stim": 1,
     "typical": 1,
     "mtle": 1,
+    "laterality": 0,
+    "focality": 0,
     "interictal_training": ["HUP263_phaseII",28040]
     },
     {"ptID": "HUP266",
@@ -123,6 +151,8 @@
     "hf_stim": 0,
     "typical": 0,
     "mtle": 0,
+    "laterality":1,
+    "focality": 1,
     "interictal_training": ["HUP266_phaseII",25165]
     },
     {"ptID": "HUP267",
@@ -131,6 +161,8 @@
     "hf_stim": 0,
     "typical": 1,
     "mtle": 0,
+    "laterality": 0,
+    "focality": 0,
     "interictal_training": ["HUP267_phaseII", 58083.49]
     },
     {"ptID": "HUP273",
@@ -139,10 +171,22 @@
     "hf_stim": 0,
     "typical": 0,
     "mtle": 1,
+    "laterality": 1,
+    "focality": 0,
     "interictal_training": ["HUP273b_phaseII", 41715]
     },
     {"ptID": "HUP275",
     "ieeg_ids": ["HUP275_CCEP","HUP275_phaseII"],
+    "lf_stim": 1,
+    "hf_stim": 0,
+    "typical": 0,
+    "mtle": 1,
+    "laterality": 0,
+    "focality": 0,
+    "interictal_training": ["HUP275_phaseII", 310639]
+    },
+    {"ptID": "HUP278",
+    "ieeg_ids": ["HUP278_CCEP","HUP278_phaseII"],
     "lf_stim": 1,
     "hf_stim": 0,
     "typical": 0,
