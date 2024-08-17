@@ -15,7 +15,7 @@ import mne
 from mne_bids import BIDSPath, write_raw_bids
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config_unit.json'),flag=None)
+usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
 
 # Setting Seed
 np.random.seed(171999)
