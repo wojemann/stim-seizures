@@ -28,14 +28,12 @@ sys.path.append('/users/wojemann/iEEG_processing')
 plt.rcParams['image.cmap'] = 'magma'
 
 def main():
-    _,_,datapath,prodatapath,figpath,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
+    _,_,datapath,prodatapath,metapath,_,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
-    seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
-    annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
-
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     montage = 'bipolar'
     mdl_str = 'NRG'
-    clf_fs = 256
+    clf_fs = 128
     final_thresh = 0.75
     first_sz_idx_offset = 118
 

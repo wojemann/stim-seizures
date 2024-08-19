@@ -1044,7 +1044,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     
 
 def remove_scalp_electrodes(raw_labels):
-    scalp_list = ['Cz','Fz','Pz',
+    scalp_list = ['CZ','FZ','PZ',
                   'A01','A02',
                   'C03','C04',
                   'F03','F04','F07','F08',
@@ -1059,7 +1059,7 @@ def remove_scalp_electrodes(raw_labels):
                   ]
     chop_scalp = ['C1'+str(x) for x in range(19,29)]
     scalp_list += chop_scalp
-    return [l for l in raw_labels if l not in scalp_list]
+    return [l for l in raw_labels if l.upper() not in scalp_list]
 ################################################ Feature Extraction ################################################
 
 
@@ -1439,7 +1439,7 @@ def load_config(config_path,flag='HUP'):
         patient_table = patient_table[patient_table.ptID.apply(lambda x: x[:3]) == 'HUP']
     elif flag == 'CHOP':
         patient_table = patient_table[patient_table.ptID.apply(lambda x: x[:4]) == 'CHOP']
-    rid_hup = pd.read_csv(ospj(datapath,'rid_hup.csv'))
+    rid_hup = pd.read_csv(ospj(metapath,'rid_hup.csv'))
     pt_list = patient_table.ptID.to_numpy()
     return usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 # %%

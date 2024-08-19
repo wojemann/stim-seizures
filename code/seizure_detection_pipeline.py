@@ -169,6 +169,7 @@ class AbsSlope():
         # x should be samples x channels df
         self.scaler = RobustScaler().fit(x)
         nx = self.scaler.transform(x)
+        self.inter = pd.DataFrame(nx,columns = x.columns)
         self.nstds = np.std(nx,axis=0)
 
     def get_times(self, x):
@@ -365,9 +366,9 @@ def main():
             print(e)  # Memory growth must be set before GPUs have been initialized
     # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
-    _,_,datapath,prodatapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
+    _,_,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
-    seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
 
     montage = 'bipolar'
     train_win = TRAIN_WIN
