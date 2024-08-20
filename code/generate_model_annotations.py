@@ -31,7 +31,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 plt.rcParams['image.cmap'] = 'magma'
 
 def main():
-    _,_,datapath,prodatapath,metapath,figpath,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
+    _,_,datapath,prodatapath,metapath,_,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
@@ -58,9 +58,11 @@ def main():
         pbar.set_description(desc=f"Patient -- {pt}",refresh=True)
         if len(row.interictal_training) == 0:
             continue
+        ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
         seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+        ###
+
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
-        
         for _,sz_row in qbar:
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
@@ -89,7 +91,7 @@ def main():
                 # Find closest index to consensus 10 second spread time
                 spread_index = np.argmin(np.abs((time_wins-70) + time_diff))
                 # sweep threshold
-                for final_thresh in np.linspace(0,1,int(1/0.01)+1):
+                for final_thresh in np.arange(0,1,.01):
                     predicted_channels['Patient'].append(sz_row.Patient)
                     predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
                     predicted_channels['model'].append(mdl_str)
@@ -99,19 +101,23 @@ def main():
                     predicted_channels['to_annotate'].append(sz_row.to_annotate)
                     predicted_channels['threshold'].append(final_thresh)
 
-                    sz_clf_final = sz_prob > final_thresh
+                    # get late szing mask
+                    late = np.sum(sz_prob[:,-118:] > final_thresh,axis=1) > 30
+                    sz_prob_reject = sz_prob[~late,:]
+                    prob_chs_reject = prob_chs[~late]
+                    # sz_clf_final = sz_prob > final_thresh
 
                     # Here this could be first seizing index, or it could be the time of the clinically defined UEO from the annotations
                     # first_seizing_index = np.argmax(sz_clf_final.any(axis=0))
         
-                    mdl_ueo_idx = np.where(np.sum(sz_clf_final[:, onset_index:onset_index + 3], axis=1) > 0)[0]
-                    mdl_ueo_ch_bp = prob_chs[mdl_ueo_idx]
+                    mdl_ueo_idx = np.all(sz_prob_reject[:,onset_index:onset_index+5] > final_thresh,axis=1)
+                    mdl_ueo_ch_bp = prob_chs_reject[mdl_ueo_idx]
                     mdl_ueo_ch_strict = np.array([s.split("-")[0] for s in mdl_ueo_ch_bp]).flatten()
                     mdl_ueo_ch_loose = np.unique(np.array([s.split("-") for s in mdl_ueo_ch_bp]).flatten())
                     predicted_channels['ueo_chs_strict'].append(mdl_ueo_ch_strict)
                     predicted_channels['ueo_chs_loose'].append(mdl_ueo_ch_loose)
-                    mdl_sec_idx = np.where(np.sum(sz_clf_final[:, spread_index:spread_index + 3], axis=1) > 0)[0]
-                    mdl_sec_ch_bp = prob_chs[mdl_sec_idx]
+                    mdl_sec_idx = np.all(sz_prob_reject[:,spread_index:spread_index+5] > final_thresh,axis=1)
+                    mdl_sec_ch_bp = prob_chs_reject[mdl_sec_idx]
                     mdl_sec_ch_strict = np.array([s.split("-")[0] for s in mdl_sec_ch_bp]).flatten()
                     mdl_sec_ch_loose = np.unique(np.array([s.split("-") for s in mdl_sec_ch_bp]).flatten())
                     predicted_channels['sec_chs_strict'].append(mdl_sec_ch_strict)

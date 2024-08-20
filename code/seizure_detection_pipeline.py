@@ -185,9 +185,9 @@ class AbsSlope():
         slopes = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
         scaled_slopes = slopes.squeeze()/np.expand_dims(self.nstds,1)*self.fs
         scaled_slopes = scaled_slopes.squeeze()
-        normalized_slopes = scale_normalized(scaled_slopes,15)
+        # normalized_slopes = scale_normalized(scaled_slopes,15)
         # normalized_slopes = minmax_scale(scaled_slopes.reshape(-1,1)).reshape(scaled_slopes.shape)
-        return normalized_slopes
+        return scaled_slopes/1000
     
     def __call__(self, *args):
         return self.forward(*args)
@@ -221,10 +221,10 @@ class NRG():
         x = x.T
         nrg = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
         nrg = nrg.squeeze()
-        normalized_nrg = scale_normalized(nrg,15)
+        # normalized_nrg = scale_normalized(nrg,15)
         # normalized_nrg = minmax_scale(nrg.reshape(-1,1)).reshape(nrg.shape)
-        return normalized_nrg
-    
+        # return normalized_nrg
+        return nrg/10
     def __call__(self, *args):
         return self.forward(*args)
 
@@ -373,6 +373,7 @@ def main():
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
+
     # pt_skip = True
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
@@ -407,25 +408,24 @@ def main():
         except:
             print(f"electrode localization failed for {pt}")
             neural_channels = chn_labels
-        inter_raw = inter_raw.loc[:,neural_channels]
-        inter_nopre = inter_raw.copy()
+        inter_neural = inter_raw.loc[:,neural_channels]
        
-        for mdl_str in  ['AbsSlp','LSTM','NRG','WVNT']:
+        for mdl_str in  ['AbsSlp','LSTM']:#,'NRG','WVNT']:
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=128
-            inter, fs, mask = preprocess_for_detection(inter_nopre,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
+            inter_prep, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
 
             # Training selected model
             if mdl_str in ['LSTM','LSTMX']:
                 ###
                 # Instantiate the model
-                input_size = inter.shape[1]
+                input_size = inter_prep.shape[1]
                 hidden_size = 10
 
                 # Check for cuda
-                # ccheck = torch.cuda.is_available()
-                ccheck = False
+                ccheck = torch.cuda.is_available()
+                # ccheck = False
 
                 # Initialize the model
                 if mdl_str == 'LSTM':
@@ -436,9 +436,9 @@ def main():
                     model.cuda()
                 
                 # Scale the training data
-                model.fit_scaler(inter)
-                inter_z = model.scaler_transform(inter)
-                inter_z = pd.DataFrame(inter_z,columns=inter.columns)
+                model.fit_scaler(inter_prep)
+                inter_z = model.scaler_transform(inter_prep)
+                inter_z = pd.DataFrame(inter_z,columns=inter_prep.columns)
 
                 # Prepare input and target data for the LSTM
                 input_data,target_data = prepare_segment(inter_z,fs=fs)
@@ -462,17 +462,21 @@ def main():
                 ###
             elif mdl_str in ['NRG','AbsSlp','WVNT']:
                 if mdl_str == 'AbsSlp':
-                    model = AbsSlope(10,1, fs)
-                    model.fit(inter)
+                    model = AbsSlope(1,.5, fs)
+                    model.fit(inter_prep)
                 elif mdl_str == 'NRG':
-                    model = NRG(10,1,fs)
-                    model.fit(inter)
+                    model = NRG(1,.5,fs)
+                    model.fit(inter_prep)
                 elif mdl_str == 'WVNT':
                     model = WVNT(ospj(prodatapath,'WaveNet','v111.hdf5'),1,.5,fs)
-                    model.fit(inter)
+                    model.fit(inter_prep)
                 
-            # Iterating through each seizure for that patient
+            
+            ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
             seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+            ###
+            
+            # Iterating through each seizure for that patient
             qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),leave=False)
             for i,(_,sz_row) in enumerate(qbar):
                 set_seed(1071999)
@@ -508,10 +512,7 @@ def main():
                     time_wins = model.get_times(seizure_pre)
 
                 # Creating probabilities by temporally smoothing classification
-                if mdl_str in ['LSTM','WVNT']:
-                    sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
-                else:
-                    sz_prob = mdl_outs
+                sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
                 sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure_pre.columns)
                 time_df = pd.Series(time_wins,name='time')
                 sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)
