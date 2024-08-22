@@ -34,8 +34,8 @@ def main():
     montage = 'bipolar'
     mdl_str = 'NRG'
     clf_fs = 128
-    final_thresh = 0.75
-    first_sz_idx_offset = 118
+    final_thresh = 0.415
+    first_sz_idx_offset = 113
 
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
@@ -99,21 +99,41 @@ def main():
             else:
                 sz_ch_arr = []
                 sz_times_arr = []
+
+            late = np.sum(sz_prob[:,-118:] > final_thresh,axis=1) > 30
+            sz_prob_reject = sz_prob[~late,:]
+            prob_chs_reject = prob_chs[~late]
+            sz_clf_final = sz_prob_reject > final_thresh
+            # Get channels
+            sliced_data = sz_clf_final[:,first_sz_idx_offset:]
+            df = pd.DataFrame(sliced_data).T
+            seizing = df.rolling(window=5,closed='right').apply(lambda x: (x == 1).all())
+            first_sz_idxs = seizing.idxmax().to_numpy() - 4
+            seized_idxs = np.any(sliced_data,axis=1)
+            first_sz_idxs += first_sz_idx_offset
+            if sum(seized_idxs) > 0:
+                sz_times_arr = time_wins[first_sz_idxs[seized_idxs]]
+                sz_times_arr -= np.min(sz_times_arr)
+                sz_ch_arr = prob_chs_reject[seized_idxs]
+                sz_ch_arr = np.array([s.split("-")[0] for s in sz_ch_arr]).flatten()
+            else:
+                sz_ch_arr = []
+                sz_times_arr = []
             predicted_channels['sz_chs'].append(sz_ch_arr)
             predicted_channels['sz_times'].append(sz_times_arr)
-            # NEED TO SAVE TIMES ARRAY ALONG WITH CHANNELS TO THE DF
-            # THEN I WILL GO WITHIN PATIENTS, SEARCH THROUGH ALL SPONTANEOUS SEIZURES, AND SEE WHEN THE STIM ONSET REGIONS/CHANNELS START SEIZING IN THE SPONTANEOUS SEIZURES
 
             onset_index = np.min(first_sz_idxs)
+            spread_index = onset_index + 20
 
-            mdl_ueo_idx = np.where(np.sum(sz_clf_final[:, onset_index:onset_index + 3], axis=1) > 0)[0]
-            mdl_ueo_ch_bp = prob_chs[mdl_ueo_idx]
+            mdl_ueo_idx = np.all(sz_prob_reject[:,onset_index:onset_index+5] > final_thresh,axis=1)
+            mdl_ueo_ch_bp = prob_chs_reject[mdl_ueo_idx]
             mdl_ueo_ch_strict = np.array([s.split("-")[0] for s in mdl_ueo_ch_bp]).flatten()
             mdl_ueo_ch_loose = np.unique(np.array([s.split("-") for s in mdl_ueo_ch_bp]).flatten())
             predicted_channels['ueo_chs_strict'].append(mdl_ueo_ch_strict)
             predicted_channels['ueo_chs_loose'].append(mdl_ueo_ch_loose)
-            mdl_sec_idx = np.where(np.sum(sz_clf_final[:, onset_index+10:onset_index + 13], axis=1) > 0)[0]
-            mdl_sec_ch_bp = prob_chs[mdl_sec_idx]
+
+            mdl_sec_idx = np.all(sz_prob_reject[:,spread_index:spread_index+5] > final_thresh,axis=1)
+            mdl_sec_ch_bp = prob_chs_reject[mdl_sec_idx]
             mdl_sec_ch_strict = np.array([s.split("-")[0] for s in mdl_sec_ch_bp]).flatten()
             mdl_sec_ch_loose = np.unique(np.array([s.split("-") for s in mdl_sec_ch_bp]).flatten())
             predicted_channels['sec_chs_strict'].append(mdl_sec_ch_strict)

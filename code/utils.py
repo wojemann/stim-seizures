@@ -301,7 +301,7 @@ def clean_labels(channel_li: list, pt: str) -> list:
             continue
 
         if pt in ("HUP123_phaseII_D02", "HUP123", "sub-RID0193"):
-            if lead == "RS":
+            if lead == "RS": 
                 lead = "RSO"
             if lead == "GTP":
                 lead = "RG"

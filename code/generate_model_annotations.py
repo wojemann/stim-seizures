@@ -83,9 +83,9 @@ def main():
                     consensus_time = annot_row.ueo_time_consensus.item()
                 else:
                     consensus_time = approx_time
-                # all_chs = annot_row.all_chs.item()
-                time_diff = consensus_time - approx_time
                 
+                # identifying difference between annotator and approximate time
+                time_diff = consensus_time - approx_time
                 # Find closest index to consensus onset time relative to actual onset time (consensus - approximate and find closest to 120 + diff)
                 onset_index = np.argmin(np.abs((time_wins-60) + time_diff))
                 # Find closest index to consensus 10 second spread time
@@ -109,7 +109,7 @@ def main():
 
                     # Here this could be first seizing index, or it could be the time of the clinically defined UEO from the annotations
                     # first_seizing_index = np.argmax(sz_clf_final.any(axis=0))
-        
+
                     mdl_ueo_idx = np.all(sz_prob_reject[:,onset_index:onset_index+5] > final_thresh,axis=1)
                     mdl_ueo_ch_bp = prob_chs_reject[mdl_ueo_idx]
                     mdl_ueo_ch_strict = np.array([s.split("-")[0] for s in mdl_ueo_ch_bp]).flatten()

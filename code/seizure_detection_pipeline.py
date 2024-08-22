@@ -410,7 +410,7 @@ def main():
             neural_channels = chn_labels
         inter_neural = inter_raw.loc[:,neural_channels]
        
-        for mdl_str in  ['AbsSlp','LSTM']:#,'NRG','WVNT']:
+        for mdl_str in  ['LSTM','AbsSlp','NRG','WVNT']:
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=128
@@ -458,7 +458,7 @@ def main():
                 # Creating classification thresholds
                 input_data,target_data = prepare_segment(inter_z,fs=fs)
                 inter_outputs = predict_sz(model,input_data,target_data,batch_size=full_batch,ccheck=ccheck)
-                thresholds = np.percentile(inter_outputs,85,0)
+                thresholds = np.percentile(inter_outputs,90,0)
                 ###
             elif mdl_str in ['NRG','AbsSlp','WVNT']:
                 if mdl_str == 'AbsSlp':
@@ -473,7 +473,7 @@ def main():
                 
             
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-            seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+            seizure_times = seizures_df[(seizures_df.Patient == pt)]# & (seizures_df.to_annotate == 1)]
             ###
             
             # Iterating through each seizure for that patient
@@ -503,9 +503,11 @@ def main():
                     outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
                     seizure_mat = repair_data(outputs,seizure_z,fs=fs)
                     # Getting raw predicted loss values for each window
-                    raw_sz_vals = np.mean(np.log(seizure_mat),1).T
+                    # raw_sz_vals = np.exp(np.mean(seizure_mat,axis=1).T)
+                    raw_sz_vals = np.mean(np.log(seizure_mat),axis=1).T
                     # Creating classifications
                     mdl_outs = (raw_sz_vals.T > np.log(thresholds)).T.astype(float)
+                    # mdl_outs = raw_sz_vals/np.max(raw_sz_vals)
                     ###
                 elif mdl_str in ['NRG','AbsSlp','WVNT']:
                     mdl_outs = model(seizure_pre)
