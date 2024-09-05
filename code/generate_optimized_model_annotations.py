@@ -32,9 +32,9 @@ def main():
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     montage = 'bipolar'
-    mdl_str = 'NRG'
+    mdl_str = 'LSTM'
     clf_fs = 128
-    final_thresh = 0.415
+    final_thresh = 0.2
     first_sz_idx_offset = 113
 
     # Iterating through each patient that we have annotations for
@@ -140,7 +140,7 @@ def main():
             predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"optimized_predicted_channels.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_{final_thresh}.pkl"))
     predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

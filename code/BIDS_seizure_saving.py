@@ -15,7 +15,7 @@ import mne
 from mne_bids import BIDSPath, write_raw_bids
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
+usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
 
 # Setting Seed
 np.random.seed(171999)
@@ -161,9 +161,9 @@ def main():
                     allow_preload=True,
                     format="EDF",
                 )
-    seizures_df.to_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df.to_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     # Save to a JSON file
-    with open(ospj(prodatapath,'bad_ch_dict.pkl'), 'wb') as f:
+    with open(ospj(metapath,'bad_ch_dict.pkl'), 'wb') as f:
         pickle.dump(bad_ch_dict, f)
 if __name__ == "__main__":
     main()
