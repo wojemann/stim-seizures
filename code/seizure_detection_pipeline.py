@@ -381,12 +381,7 @@ def main():
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
         # Skipping if no training data has been identified
-        # Creating code to test some patinets
-        # if (pt != 'CHOP028') and pt_skip:
-        #     continue
-        # else:
-        #     pt_skip = True
-        # End patient test
+        #         
         if len(row.interictal_training) == 0:
             continue
         # Loading data from bids
