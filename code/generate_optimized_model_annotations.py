@@ -32,9 +32,9 @@ def main():
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     montage = 'bipolar'
-    mdl_str = 'LSTM'
+    mdl_str = 'NRG'
     clf_fs = 128
-    final_thresh = 0.2
+    final_thresh = 0.415
     first_sz_idx_offset = 113
 
     # Iterating through each patient that we have annotations for

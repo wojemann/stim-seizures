@@ -186,21 +186,13 @@
     "focality": 0,
     "interictal_training": ["HUP275_phaseII", 310639]
     },
-    {"ptID": "HUP278",
-    "ieeg_ids": ["HUP278_CCEP","HUP278_phaseII"],
-    "lf_stim": 1,
-    "hf_stim": 0,
-    "typical": 0,
-    "mtle": 1,
-    "interictal_training": []
-    },
     {"ptID": "HUP288",
     "ieeg_ids": ["HUP288_CCEP","HUP288_phaseII"],
     "lf_stim": 1,
     "hf_stim": 0,
     "typical": 0,
     "mtle": 1,
-    "interictal_training": []
+    "interictal_training": ["HUP288_phaseII", 25015]
     },
     {"ptID": "CHOP005",
     "ieeg_ids": ["CHOPCCEP_005","CHOP005"],

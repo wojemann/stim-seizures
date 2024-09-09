@@ -37,7 +37,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = True
+OVERWRITE = False
 TRAIN_WIN = 12
 PRED_WIN = 1
 
@@ -474,6 +474,8 @@ def main():
             # Iterating through each seizure for that patient
             qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),leave=False)
             for i,(_,sz_row) in enumerate(qbar):
+                if (pt == 'CHOP037') & (sz_row.approximate_onset == 962082.12):
+                    continue
                 set_seed(1071999)
                 qbar.set_description(f"{mdl_str} processing seizure {i}")
                 # Load in seizure and metadata for BIDS path

@@ -21,7 +21,7 @@ usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -40,7 +40,7 @@ def main():
     }
 
     # Loading in all seizure data
-    seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information - LF_seizure_annotation.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information - LF_seizure_annotation.csv"))
     seizures_df.dropna(axis=0,how='all',inplace=True)
     seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)
     seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)
@@ -82,6 +82,10 @@ def main():
 
             # check if the file already exists, if so, skip
             if sz_clip_bids_path.fpath.exists() and not OVERWRITE:
+                continue
+
+            # CHOP037 has a seizure that's too large
+            if (pt == 'CHOP037') & (onset == 962082.12):
                 continue
 
             # HUP097 does not have an end time, so we'll just use 60 seconds from the start

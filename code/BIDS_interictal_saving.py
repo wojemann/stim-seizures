@@ -16,13 +16,13 @@ from mne_bids import BIDSPath, write_raw_bids
 
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
+usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
 
 # Setting Seed
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -41,7 +41,7 @@ def main():
     }
 
     # Loading in all seizure data
-    seizures_df = pd.read_csv(ospj(datapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
 
     for _,row in tqdm(
         patient_table.iterrows(),
