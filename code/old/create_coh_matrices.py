@@ -12,7 +12,7 @@ import pathlib
 from tqdm import tqdm
 from pqdm.processes import pqdm
 from utils import *
-from dtw_utils import *
+from code.old.network_utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
 import mne

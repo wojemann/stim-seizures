@@ -219,15 +219,16 @@ def pqdm_snmf(all_coherences,k_min=5,k_max=15):
     
     return stability_scores
 
-def parallel_coh_timeseries(data,fs=1024,win_len=10,stride=1,factor=2, indexed = True):
+def parallel_coh_timeseries(data,fs=512,win_len=10,stride=1,target=256, indexed = True):
         
     if indexed:
         index = data[0]
         data = data[1]
     cols = data.columns
-    data = sig.decimate(data,factor,axis=0)
+    data_len = int(len(data)/fs*target)
+    data = sig.resample(data,data_len,axis=0)
     data = pd.DataFrame(data,columns=cols)
-    fs = fs/factor
+    fs = int(target)
     m_samples = data.shape[0]
 
     # Window parameters

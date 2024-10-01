@@ -1,22 +1,16 @@
 #// "interictal_training": ["HUP253_phaseII",5783]
-# iEEG imports
-from ieeg.auth import Session
-
 # Scientific computing imports
 import numpy as np
 import scipy as sc
 import pandas as pd
-import json
 from scipy.linalg import hankel
 from tqdm import tqdm
-from sklearn.metrics import recall_score
-from sklearn.metrics import precision_score
 from sklearn.preprocessing import RobustScaler, minmax_scale
 
 # Plotting
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 # Imports for deep learning
 import torch
@@ -37,7 +31,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = False
+OVERWRITE = True
 TRAIN_WIN = 12
 PRED_WIN = 1
 
@@ -183,7 +177,7 @@ class AbsSlope():
         x = self.scaler.transform(x)
         x = x.T
         slopes = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
-        scaled_slopes = slopes.squeeze()/np.expand_dims(self.nstds,1)*self.fs
+        scaled_slopes = slopes.squeeze()/self.nstds.reshape(-1,1)*self.fs
         scaled_slopes = scaled_slopes.squeeze()
         # normalized_slopes = scale_normalized(scaled_slopes,15)
         # normalized_slopes = minmax_scale(scaled_slopes.reshape(-1,1)).reshape(scaled_slopes.shape)
@@ -344,9 +338,9 @@ def scale_normalized(data,m=5):
     data_norm[data_norm > 1] = 1
     return data_norm
 
-def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
-    plt.subplots(figsize=(48,24))
-    plt.imshow(mat)
+def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None,cmap=False):
+    # plt.subplots(figsize=(48,24))
+    plt.imshow(mat,cmap=cmap)
     plt.axvline(np.argwhere(np.ceil(win_times)==60)[0])
 
     plt.xlabel('Time (s)')
@@ -354,7 +348,21 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
     plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-60)
     if xlim is not None:
         plt.xlim(xlim)
+    plt.clim([0,1])
     plt.savefig(fig_save_path)
+
+def plot_and_save_detection_figure(mat,win_times,yticks,fig_save_path,xlim = None,cmap=False):
+    # plt.subplots(figsize=(48,24))
+    plot_onset_lower = np.argwhere(np.ceil(win_times)==50)[0]
+    plot_onset_upper = np.argwhere(np.ceil(win_times)==140)[0]
+    plt.imshow(mat[:,int(plot_onset_lower):int(plot_onset_upper)],cmap=cmap)
+
+    plt.xticks([])
+    plt.yticks([])
+    if xlim is not None:
+        plt.xlim(xlim)
+    plt.clim([0,1])
+    plt.savefig(fig_save_path,bbox_inches='tight')
 
 def main():
     gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -379,6 +387,8 @@ def main():
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:   
         pt = row.ptID
+        if pt not in ['HUP238']:
+            continue
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
         # Skipping if no training data has been identified
         #         
@@ -405,7 +415,7 @@ def main():
             neural_channels = chn_labels
         inter_neural = inter_raw.loc[:,neural_channels]
        
-        for mdl_str in  ['LSTM','AbsSlp','NRG','WVNT']:
+        for i_mdl,mdl_str in  enumerate(['AbsSlp','LSTM','NRG','WVNT']):
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=128
@@ -524,12 +534,20 @@ def main():
                 first_detect = np.argmax(sz_prob[:,int(detect_idx):]>.75,axis=1)
                 first_detect[first_detect == 0] = sz_prob.shape[1]
                 ch_sorting = np.argsort(first_detect)
-                
+                colors = sns.color_palette("deep", 4)
+                # Plot heatmaps for the first 4 colors
+                cmap = LinearSegmentedColormap.from_list('custom_cmap', [(1, 1, 1), colors[i_mdl]])
                 os.makedirs(ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str),exist_ok=True)
-                plot_and_save_detection(sz_prob[ch_sorting,:],
+                plot_and_save_detection_figure(sz_prob,
                                         time_wins,
                                         seizure.columns[ch_sorting],
-                                        ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_prob.png"))
+                                        ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_prob_colored.png"),
+                                        cmap = cmap)
+                plot_and_save_detection(sz_prob,
+                                        time_wins,
+                                        seizure.columns[ch_sorting],
+                                        ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_prob.png"),
+                                        )
             del model
 if __name__ == "__main__":
     main()
