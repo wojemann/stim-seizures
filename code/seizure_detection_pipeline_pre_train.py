@@ -1,4 +1,3 @@
-#// "interictal_training": ["HUP253_phaseII",5783]
 # Scientific computing imports
 import numpy as np
 import scipy as sc
@@ -18,7 +17,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from tensorflow.keras.models import load_model
-import tensorflow as tf
+from tensorflow.config.experimental import set_memory_growth, list_physical_devices
 
 # OS imports
 import os
@@ -31,7 +30,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = True
+OVERWRITE = False
 TRAIN_WIN = 12
 PRED_WIN = 1
 
@@ -223,11 +222,11 @@ class NRG():
         return self.forward(*args)
 
 class WVNT():
-    def __init__(self, mdl_path, win_size = 1, stride = 0.5, fs = 128):
+    def __init__(self, mdl, win_size = 1, stride = 0.5, fs = 128):
         self.win_size = win_size
         self.stride = stride
         self.fs = fs
-        self.mdl = load_model(mdl_path)
+        self.mdl = mdl
     
     def __str__(self) -> str:
         return "WVNT"
@@ -338,9 +337,9 @@ def scale_normalized(data,m=5):
     data_norm[data_norm > 1] = 1
     return data_norm
 
-def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None,cmap=False):
+def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
     # plt.subplots(figsize=(48,24))
-    plt.imshow(mat,cmap=cmap)
+    plt.imshow(mat)
     plt.axvline(np.argwhere(np.ceil(win_times)==60)[0])
 
     plt.xlabel('Time (s)')
@@ -354,7 +353,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None,cmap=
 def plot_and_save_detection_figure(mat,win_times,yticks,fig_save_path,xlim = None,cmap=False):
     # plt.subplots(figsize=(48,24))
     plot_onset_lower = np.argwhere(np.ceil(win_times)==50)[0]
-    plot_onset_upper = np.argwhere(np.ceil(win_times)==140)[0]
+    plot_onset_upper = np.argwhere(np.ceil(win_times)==140)[0] if max(win_times) > 140 else mat.shape[1]
     plt.imshow(mat[:,int(plot_onset_lower):int(plot_onset_upper)],cmap=cmap)
 
     plt.xticks([])
@@ -365,14 +364,13 @@ def plot_and_save_detection_figure(mat,win_times,yticks,fig_save_path,xlim = Non
     plt.savefig(fig_save_path,bbox_inches='tight')
 
 def main():
-    gpus = tf.config.experimental.list_physical_devices('GPU')
+    gpus = list_physical_devices('GPU')
     if gpus:
         try:
             for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
+                set_memory_growth(gpu, True)
         except RuntimeError as e:
             print(e)  # Memory growth must be set before GPUs have been initialized
-    # This pipeline assumes that the seizures have already been saved following BIDS file structure
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
     _,_,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
@@ -381,14 +379,17 @@ def main():
     montage = 'bipolar'
     train_win = TRAIN_WIN
     pred_win = PRED_WIN
-
+    all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
+    if 'WVNT' in all_mdl_strs:
+        wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
     # pt_skip = True
     # Iterating through each patient that we have annotations for
+
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
-        if pt not in ['HUP238']:
-            continue
+        # if pt not in ['HUP238']:
+        #     continue
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
         # Skipping if no training data has been identified
         #         
@@ -415,70 +416,14 @@ def main():
             neural_channels = chn_labels
         inter_neural = inter_raw.loc[:,neural_channels]
        
-        for i_mdl,mdl_str in  enumerate(['AbsSlp','LSTM','NRG','WVNT']):
+        for i_mdl,mdl_str in  enumerate(all_mdl_strs):
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=128
-            inter_prep, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
-
-            # Training selected model
-            if mdl_str in ['LSTM','LSTMX']:
-                ###
-                # Instantiate the model
-                input_size = inter_prep.shape[1]
-                hidden_size = 10
-
-                # Check for cuda
-                ccheck = torch.cuda.is_available()
-                # ccheck = False
-
-                # Initialize the model
-                if mdl_str == 'LSTM':
-                    model = LSTMModel(input_size, hidden_size)
-                elif mdl_str == 'LSTMX':
-                    model = LSTMX(input_size,hidden_size)
-                if ccheck:
-                    model.cuda()
-                
-                # Scale the training data
-                model.fit_scaler(inter_prep)
-                inter_z = model.scaler_transform(inter_prep)
-                inter_z = pd.DataFrame(inter_z,columns=inter_prep.columns)
-
-                # Prepare input and target data for the LSTM
-                input_data,target_data = prepare_segment(inter_z,fs=fs)
-
-                dataset = TensorDataset(input_data, target_data)
-                full_batch = len(dataset)
-                dataloader = DataLoader(dataset, batch_size=full_batch, shuffle=False)
-                
-                # Define loss function and optimizer
-                criterion = nn.MSELoss()
-                optimizer = optim.Adam(model.parameters(), lr=0.01)
-
-                # Train the model, this will just modify the model object, no returns
-                # print("Training patient specific model")
-                train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
-
-                # Creating classification thresholds
-                input_data,target_data = prepare_segment(inter_z,fs=fs)
-                inter_outputs = predict_sz(model,input_data,target_data,batch_size=full_batch,ccheck=ccheck)
-                thresholds = np.percentile(inter_outputs,90,0)
-                ###
-            elif mdl_str in ['NRG','AbsSlp','WVNT']:
-                if mdl_str == 'AbsSlp':
-                    model = AbsSlope(1,.5, fs)
-                    model.fit(inter_prep)
-                elif mdl_str == 'NRG':
-                    model = NRG(1,.5,fs)
-                    model.fit(inter_prep)
-                elif mdl_str == 'WVNT':
-                    model = WVNT(ospj(prodatapath,'WaveNet','v111.hdf5'),1,.5,fs)
-                    model.fit(inter_prep)
-                
+            _, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
             
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-            seizure_times = seizures_df[(seizures_df.Patient == pt)]# & (seizures_df.to_annotate == 1)]
+            seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
             
             # Iterating through each seizure for that patient
@@ -497,12 +442,44 @@ def main():
                 seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
                 
                 # Perform overwrite check
-                prob_path = f"probability_matrix_mdl-{model}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
+                sz_train = seizure_pre.loc[:fs*30,:]
 
                 if mdl_str in ['LSTM','LSTMX']:
-                    ###
+                    ##############################
+                    input_size = sz_train.shape[1]
+                    hidden_size = 10
+                    # Check for cuda
+                    ccheck = torch.cuda.is_available()
+                    # Initialize the model
+                    if mdl_str == 'LSTM':
+                        model = LSTMModel(input_size, hidden_size)
+                    elif mdl_str == 'LSTMX':
+                        model = LSTMX(input_size,hidden_size)
+                    if ccheck:
+                        model.cuda()
+
+                    # Scale the training data
+                    model.fit_scaler(sz_train)
+                    sz_train_z = model.scaler_transform(sz_train)
+                    sz_train_z = pd.DataFrame(sz_train_z,columns=sz_train.columns)
+
+                    # Prepare input and target data for the LSTM
+                    input_data,target_data = prepare_segment(sz_train_z,fs=fs)
+
+                    dataset = TensorDataset(input_data, target_data)
+                    full_batch = len(dataset)
+                    dataloader = DataLoader(dataset, batch_size=full_batch, shuffle=False)
+                    
+                    # Define loss function and optimizer
+                    criterion = nn.MSELoss()
+                    optimizer = optim.Adam(model.parameters(), lr=0.01)
+
+                    # Train the model, this will just modify the model object, no returns
+                    train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
+                    ################################################
                     seizure_z = model.scaler_transform(seizure_pre)
                     seizure_z = pd.DataFrame(seizure_z,columns=seizure_pre.columns)
                     input_data, target_data,time_wins = prepare_segment(seizure_z,fs,train_win,pred_win,ret_time=True)
@@ -510,13 +487,21 @@ def main():
                     outputs = predict_sz(model,input_data,target_data,batch_size=len(input_data)//2,ccheck=ccheck)
                     seizure_mat = repair_data(outputs,seizure_z,fs=fs)
                     # Getting raw predicted loss values for each window
-                    # raw_sz_vals = np.exp(np.mean(seizure_mat,axis=1).T)
-                    raw_sz_vals = np.mean(np.log(seizure_mat),axis=1).T
+                    raw_sz_vals = np.sqrt(np.mean(seizure_mat,axis=1)).T
                     # Creating classifications
-                    mdl_outs = (raw_sz_vals.T > np.log(thresholds)).T.astype(float)
-                    # mdl_outs = raw_sz_vals/np.max(raw_sz_vals)
+                    mdl_outs = raw_sz_vals
                     ###
+                
                 elif mdl_str in ['NRG','AbsSlp','WVNT']:
+                    if mdl_str == 'AbsSlp':
+                        model = AbsSlope(1,.5, fs)
+                        model.fit(sz_train)
+                    elif mdl_str == 'NRG':
+                        model = NRG(1,.5,fs)
+                        model.fit(sz_train)
+                    elif mdl_str == 'WVNT':
+                        model = WVNT(wave_model,1,.5,fs)
+                        model.fit(sz_train)
                     mdl_outs = model(seizure_pre)
                     time_wins = model.get_times(seizure_pre)
 
@@ -534,7 +519,7 @@ def main():
                 first_detect = np.argmax(sz_prob[:,int(detect_idx):]>.75,axis=1)
                 first_detect[first_detect == 0] = sz_prob.shape[1]
                 ch_sorting = np.argsort(first_detect)
-                colors = sns.color_palette("deep", 4)
+                colors = sns.color_palette("deep", len(all_mdl_strs))
                 # Plot heatmaps for the first 4 colors
                 cmap = LinearSegmentedColormap.from_list('custom_cmap', [(1, 1, 1), colors[i_mdl]])
                 os.makedirs(ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str),exist_ok=True)
@@ -548,6 +533,6 @@ def main():
                                         seizure.columns[ch_sorting],
                                         ospj(figpath,pt,"annotations",str(int(sz_row.approximate_onset)),mdl_str,f"{montage}_sz_prob.png"),
                                         )
-            del model
+                del model
 if __name__ == "__main__":
     main()

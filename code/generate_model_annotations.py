@@ -68,13 +68,13 @@ def main():
             for mdl_str in mdl_strs:
                 # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
-                prob_path = f"probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
                 prob_chs = sz_prob.columns.to_numpy()
                 sz_prob = sz_prob.to_numpy().T
-                
+                sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
                 # Match seizure using approximate onset time in annotations, patient name, and task
                 task_time = int(task[np.where([s.isnumeric() for s in task])[0][0]:])
                 approx_time = sz_row.approximate_onset
@@ -124,7 +124,7 @@ def main():
                     predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"predicted_channels.pkl"))
-    predicted_channels.to_csv(ospj(prodatapath,"predicted_channels.csv"))
+    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels.pkl"))
+    predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

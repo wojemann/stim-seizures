@@ -53,7 +53,7 @@ def main():
             for mdl_str in mdl_strs:
                 # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
-                prob_path = f"probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
@@ -77,8 +77,8 @@ def main():
                 spread_index = np.argmin(np.abs((time_wins-70) + time_diff))
                 # Get KDE for all probability values
                 probabilities = sz_prob.flatten()
-                kde_model = sc.stats.gaussian_kde(probabilities,'scott')
                 thresh_sweep = np.linspace(min(probabilities),max(probabilities),2000)
+                kde_model = sc.stats.gaussian_kde(probabilities,'scott')
                 kde_vals = kde_model(thresh_sweep)
 
                 # Find KDE peaks
@@ -88,9 +88,13 @@ def main():
                     biggest_pk_idx = 0
 
                 # Identify optimal threshold between peaks
-                start, end = kde_peaks[biggest_pk_idx], kde_peaks[biggest_pk_idx+1]
-                trough_idx = np.argmin(kde_vals[start:end]) + start
-                final_thresh = thresh_sweep[trough_idx]
+                if len(kde_peaks) == 1:
+                    start, end = biggest_pk_idx, (biggest_pk_idx + int(len(thresh_sweep)/4))
+                else:
+                    start, end = kde_peaks[biggest_pk_idx], kde_peaks[biggest_pk_idx+1]
+                # trough_idx = np.argmin(kde_vals[start:end]) + start
+                trough_idx = (end-start)/2 + start
+                final_thresh = thresh_sweep[int(trough_idx)]
 
                 predicted_channels['Patient'].append(sz_row.Patient)
                 predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
@@ -124,7 +128,7 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"kde_predicted_channels.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"kdediff4_predicted_channels.pkl"))
     predicted_channels.to_csv(ospj(prodatapath,"kde_predicted_channels.csv"))
 if __name__ == "__main__":
     main()
