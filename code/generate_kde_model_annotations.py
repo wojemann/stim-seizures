@@ -3,6 +3,7 @@ import numpy as np
 import scipy as sc
 import pandas as pd
 from tqdm import tqdm
+from kneed import KneeLocator
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -83,8 +84,12 @@ def main():
 
                 # Find KDE peaks
                 kde_peaks,_ = sc.signal.find_peaks(kde_vals)
-                biggest_pk_idx = np.argmax(kde_vals[kde_peaks])
+                try:
+                    biggest_pk_idx = np.where(kde_vals[kde_peaks]>np.mean(kde_vals))[0][0]
+                except:
+                    biggest_pk_idx = np.argmax(kde_vals[kde_peaks])
                 if biggest_pk_idx == len(kde_peaks)-1:
+                    print(f"{pt} has no second {mdl_str} peaks")
                     biggest_pk_idx = 0
 
                 # Identify optimal threshold between peaks
@@ -93,8 +98,11 @@ def main():
                 else:
                     start, end = kde_peaks[biggest_pk_idx], kde_peaks[biggest_pk_idx+1]
                 # trough_idx = np.argmin(kde_vals[start:end]) + start
-                trough_idx = (end-start)/2 + start
-                final_thresh = thresh_sweep[int(trough_idx)]
+                # trough_idx = (end-start)/2 + start
+                kneedle = KneeLocator(thresh_sweep[start+10:end],kde_vals[start+10:end],
+                      curve='convex',direction='decreasing',interp_method='polynomial')
+                # final_thresh = thresh_sweep[int(trough_idx)]]
+                final_thresh = kneedle.knee
 
                 predicted_channels['Patient'].append(sz_row.Patient)
                 predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
@@ -108,7 +116,9 @@ def main():
                 # get late szing mask
                 late = np.sum(sz_prob[:,(onset_index*-1):] > final_thresh,axis=1) > 30
                 sz_prob_reject = sz_prob[~late,:]
+                sz_prob_reject = sz_prob
                 prob_chs_reject = prob_chs[~late]
+                prob_chs_reject = prob_chs
                 # sz_clf_final = sz_prob > final_thresh
 
                 # Here this could be first seizing index, or it could be the time of the clinically defined UEO from the annotations
@@ -128,7 +138,7 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"kdediff4_predicted_channels.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"kdeknee_predicted_channels_nor.pkl"))
     predicted_channels.to_csv(ospj(prodatapath,"kde_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

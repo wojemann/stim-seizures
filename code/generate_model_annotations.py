@@ -86,10 +86,11 @@ def main():
                 
                 # identifying difference between annotator and approximate time
                 time_diff = consensus_time - approx_time
+                onset_time = 60
                 # Find closest index to consensus onset time relative to actual onset time (consensus - approximate and find closest to 120 + diff)
-                onset_index = np.argmin(np.abs((time_wins-60) + time_diff))
+                onset_index = np.argmin(np.abs((time_wins-onset_time) + time_diff))
                 # Find closest index to consensus 10 second spread time
-                spread_index = np.argmin(np.abs((time_wins-70) + time_diff))
+                spread_index = np.argmin(np.abs((time_wins-(onset_time+10)) + time_diff))
                 # sweep threshold
                 for final_thresh in np.arange(0,1,.01):
                     predicted_channels['Patient'].append(sz_row.Patient)
@@ -102,9 +103,11 @@ def main():
                     predicted_channels['threshold'].append(final_thresh)
 
                     # get late szing mask
-                    late = np.sum(sz_prob[:,-118:] > final_thresh,axis=1) > 30
+                    late = np.sum(sz_prob[:,-onset_index:] > final_thresh,axis=1) > (onset_index/4)
                     sz_prob_reject = sz_prob[~late,:]
+                    sz_prob_reject = sz_prob
                     prob_chs_reject = prob_chs[~late]
+                    prob_chs_reject = prob_chs
                     # sz_clf_final = sz_prob > final_thresh
 
                     # Here this could be first seizing index, or it could be the time of the clinically defined UEO from the annotations
@@ -124,7 +127,7 @@ def main():
                     predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels_nor.pkl"))
     predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
 if __name__ == "__main__":
     main()
