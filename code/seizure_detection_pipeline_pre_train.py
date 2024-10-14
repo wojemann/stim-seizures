@@ -30,7 +30,7 @@ sys.path.append('/users/wojemann/iEEG_processing')
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = False
+OVERWRITE = True
 TRAIN_WIN = 12
 PRED_WIN = 1
 
@@ -388,7 +388,7 @@ def main():
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
-        # if pt not in ['HUP238']:
+        # if pt not in ['CHOP024']:
         #     continue
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
         # Skipping if no training data has been identified
@@ -396,7 +396,7 @@ def main():
         if len(row.interictal_training) == 0:
             continue
         # Loading data from bids
-        inter_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS"),pt,'interictal')
+        inter_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,'interictal')
         # Pruning channels
         chn_labels = remove_scalp_electrodes(inter_raw.columns)
         inter_raw = inter_raw[chn_labels]
@@ -415,7 +415,8 @@ def main():
             print(f"electrode localization failed for {pt}")
             neural_channels = chn_labels
         inter_neural = inter_raw.loc[:,neural_channels]
-       
+        if pt == 'HUP266':
+            inter_neural.iloc[:,:22] = inter_neural.iloc[:,:22]*1e-3
         for i_mdl,mdl_str in  enumerate(all_mdl_strs):
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
@@ -434,10 +435,12 @@ def main():
                 set_seed(1071999)
                 qbar.set_description(f"{mdl_str} processing seizure {i}")
                 # Load in seizure and metadata for BIDS path
-                seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+                seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+                # run = int(sz_row.IEEGID)
                 # Filter out bad channels from interictal clip
                 seizure = seizure[neural_channels]
-                
+                if pt == 'HUP266':
+                    seizure.iloc[:,:22] = seizure.iloc[:,:22]*1e-3
                 # Preprocess seizure for seizure detection task
                 seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
                 

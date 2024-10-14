@@ -51,6 +51,7 @@ def main():
     # seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
     seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
     bad_ch_dict = dict()
+    buffer = 120 # seconds before and after seizure to save
     for pt, group in tqdm(
         seizures_df.groupby('Patient'),
         total=seizures_df.Patient.nunique(),
@@ -97,8 +98,8 @@ def main():
 
             data, fs = get_iEEG_data(
                 iEEG_filename=row["IEEGname"],
-                start_time_usec=(onset - 60) * 1e6, # start 60 seconds before the seizure
-                stop_time_usec=(offset + 60) * 1e6,
+                start_time_usec=(onset - buffer) * 1e6, # start buffer seconds before the seizure
+                stop_time_usec=(offset + buffer) * 1e6,
                 **ieeg_kwargs,
             )
 
@@ -148,7 +149,7 @@ def main():
             )
             raw.set_channel_types(ch_types.type)
             annots = mne.Annotations(
-                onset=[60], # seizure starts 60 seconds after the start of the clip
+                onset=[buffer], # seizure starts 60 seconds after the start of the clip
                 duration=[duration],
                 description=task_names[int(row.stim)],
             )

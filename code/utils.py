@@ -357,7 +357,7 @@ def check_channel_types(ch_list, threshold=15):
     """
     ch_df = []
     for i in ch_list:
-        regex_match = re.match(r"(\D+)(\d+)", i)
+        regex_match = re.match(r"([A-Za-z0-9]+)(\d{2})$", i)
         if regex_match is None:
             ch_df.append({"name": i, "lead": i, "contact": 0, "type": "misc"})
             continue
@@ -1036,7 +1036,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     
     # Channel rejection
     if pre_mask is None:
-        mask,_ = detect_bad_channels(data_bp_np.T*1e3,fs)
+        mask,info = detect_bad_channels(data_bp_np.T*1e3,fs)
         data_bp_np = data_bp_np[mask,:]
         bp_ch = bp_ch[mask]
     else:

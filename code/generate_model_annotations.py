@@ -64,7 +64,7 @@ def main():
 
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
         for _,sz_row in qbar:
-            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
                 # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
@@ -103,10 +103,10 @@ def main():
                     predicted_channels['threshold'].append(final_thresh)
 
                     # get late szing mask
-                    late = np.sum(sz_prob[:,-onset_index:] > final_thresh,axis=1) > (onset_index/4)
-                    sz_prob_reject = sz_prob[~late,:]
+                    # late = np.sum(sz_prob[:,-onset_index:] > final_thresh,axis=1) > (onset_index/4)
+                    # sz_prob_reject = sz_prob[~late,:]
                     sz_prob_reject = sz_prob
-                    prob_chs_reject = prob_chs[~late]
+                    # prob_chs_reject = prob_chs[~late]
                     prob_chs_reject = prob_chs
                     # sz_clf_final = sz_prob > final_thresh
 
