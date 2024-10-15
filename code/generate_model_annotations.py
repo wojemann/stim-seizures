@@ -64,7 +64,7 @@ def main():
 
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
         for _,sz_row in qbar:
-            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
                 # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
@@ -86,7 +86,7 @@ def main():
                 
                 # identifying difference between annotator and approximate time
                 time_diff = consensus_time - approx_time
-                onset_time = 60
+                onset_time = 120
                 # Find closest index to consensus onset time relative to actual onset time (consensus - approximate and find closest to 120 + diff)
                 onset_index = np.argmin(np.abs((time_wins-onset_time) + time_diff))
                 # Find closest index to consensus 10 second spread time

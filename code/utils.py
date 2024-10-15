@@ -1036,8 +1036,9 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     
     # Channel rejection
     if pre_mask is None:
-        mask,info = detect_bad_channels(data_bp_np.T*1e3,fs)
+        mask,_ = detect_bad_channels(data_bp_np.T*1e3,fs)
         data_bp_np = data_bp_np[mask,:]
+        mask_list = [ch for ch in bp_ch[~mask]]
         bp_ch = bp_ch[mask]
     else:
         mask = np.atleast_1d([ch not in pre_mask for ch in bp_ch])
@@ -1063,7 +1064,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     data_white = ar_one(data_bpd)
     data_white_df = pd.DataFrame(data_white,columns = bp_ch)
     if pre_mask is None:
-        return data_white_df,fsd,mask
+        return data_white_df,fsd,mask_list
     else:
         return data_white_df,fsd
     

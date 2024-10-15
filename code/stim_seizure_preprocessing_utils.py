@@ -32,10 +32,13 @@ def barndoor(sz,pk_idxs,fs,pre=50e-3,post=100e-3,plot = False):
     pre_idx = np.floor(pre*fs).astype(int)
     post_idx = np.floor(post*fs).astype(int)
     win_idx = pre_idx + post_idx
-    taper = np.linspace(0,1,win_idx)
     for idx in pk_idxs:
         sidx = int(idx-pre_idx)
         eidx = int(idx+post_idx)
+        if ((eidx+win_idx) > data.shape[0]) | ((sidx-win_idx) < 0):
+            continue
+        win_idx = eidx-sidx
+        taper = np.linspace(0,1,win_idx)
         pre_data = data.iloc[sidx-win_idx:sidx,:].to_numpy()
         post_data = data.iloc[eidx:eidx+win_idx,:].to_numpy()
         data.iloc[sidx:eidx,:] = np.flip(pre_data,0) * np.flip(taper).reshape(-1,1) + np.flip(post_data,0) * taper.reshape(-1,1)

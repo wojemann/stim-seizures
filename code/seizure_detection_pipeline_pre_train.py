@@ -4,7 +4,7 @@ import scipy as sc
 import pandas as pd
 from scipy.linalg import hankel
 from tqdm import tqdm
-from sklearn.preprocessing import RobustScaler, minmax_scale
+from sklearn.preprocessing import RobustScaler
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -27,13 +27,11 @@ from utils import *
 from stim_seizure_preprocessing_utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
 OVERWRITE = True
-TRAIN_WIN = 12
-PRED_WIN = 1
 
 # Functions for data formatting in autoregressive problem
 # prepare_segment turns interictal/seizure clip into input and target data for autoregression
@@ -378,19 +376,24 @@ def main():
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
 
     montage = 'bipolar'
-    train_win = TRAIN_WIN
-    pred_win = PRED_WIN
+    train_win = 12
+    pred_win = 1
     all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
-    # pt_skip = True
+    pt_skip = True
     # Iterating through each patient that we have annotations for
-
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
 
+        if pt not in ['HUP249']:
+            if pt_skip:
+                continue
+        else:
+            pt_skip = False
+       
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
             continue
@@ -426,7 +429,6 @@ def main():
             # Preprocess the signal
             target=128
             inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
-            inter_bad_ch_list = inter_pre.columns[~mask]
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
             seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
@@ -448,14 +450,19 @@ def main():
 
                 # Interpolating stimulation artifact
                 if sz_row.stim == 1:
-                    pk_idxs,stim_chs = stim_detect(seizure,threshold=baseline_stds*100,fs=fs_raw)
+                    stim_chs = np.zeros((len(seizure.columns),),dtype=bool)
+                    for ch in sz_row.stim_channels.split('-'):
+                        # print(clean_labels([ch],pt))
+                        ch = clean_labels([ch],pt)[0]
+                        stim_chs += np.array([ch == c for c in seizure.columns])
+                    pk_idxs,_ = stim_detect(seizure,threshold=baseline_stds*100,fs=fs_raw)
                     seizure = barndoor(seizure,pk_idxs,fs_raw,plot=False)
                     seizure = seizure.iloc[:,~stim_chs]
                 
                 # Preprocess seizure for seizure detection task
-                seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=inter_bad_ch_list)
+                seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
                 
-                noisy_channel_mask = seizure_pre.abs().max() <= (np.median(seizure_pre.abs().max())*50)
+                noisy_channel_mask = seizure_pre.loc[120*fs:,:].abs().max() <= (np.median(seizure_pre.loc[120*fs:,:].abs().max())*50)
                 # noisy_channel_list = seizure_pre.columns[noisy_channel_mask].to_list()
                 seizure_pre = seizure_pre.loc[:,noisy_channel_mask]
 
@@ -464,7 +471,10 @@ def main():
                 
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
-                sz_train = seizure_pre.loc[:fs*60,:]
+                if sz_row.stim == 1:    
+                    sz_train = inter_pre.loc[:,seizure_pre.columns]
+                else:
+                    sz_train = seizure_pre.loc[:fs*60,:]
 
                 if mdl_str in ['LSTM','LSTMX']:
                     ##############################
