@@ -345,7 +345,7 @@ def get_apn_dkt(
     return dkt
 
 
-def check_channel_types(ch_list, threshold=15):
+def check_channel_types(ch_list, threshold=24):
     """Function to check channel types
 
     Args:
@@ -1040,8 +1040,9 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
         data_bp_np = data_bp_np[mask,:]
         bp_ch = bp_ch[mask]
     else:
-        data_bp_np = data_bp_np[pre_mask,:]
-        bp_ch = bp_ch[pre_mask]
+        mask = np.atleast_1d([ch not in pre_mask for ch in bp_ch])
+        data_bp_np = data_bp_np[mask,:]
+        bp_ch = bp_ch[mask]
         
     # Filtering and autocorrelation
     if wavenet:

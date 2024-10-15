@@ -88,7 +88,7 @@ def main():
                 # Find KDE peaks
                 kde_peaks,_ = sc.signal.find_peaks(kde_vals)
                 try:
-                    biggest_pk_idx = np.where(kde_vals[kde_peaks]>np.mean(kde_vals))[0][0]
+                    biggest_pk_idx = np.where(kde_vals[kde_peaks]>(np.mean(kde_vals)+np.std(kde_vals)))[0][-1]
                 except:
                     biggest_pk_idx = np.argmax(kde_vals[kde_peaks])
                 if biggest_pk_idx == len(kde_peaks)-1:

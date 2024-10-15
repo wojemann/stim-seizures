@@ -24,6 +24,7 @@ import os
 from os.path import join as ospj
 from os.path import exists as ospe
 from utils import *
+from stim_seizure_preprocessing_utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
 
@@ -340,11 +341,11 @@ def scale_normalized(data,m=5):
 def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
     # plt.subplots(figsize=(48,24))
     plt.imshow(mat)
-    plt.axvline(np.argwhere(np.ceil(win_times)==60)[0])
+    plt.axvline(np.argwhere(np.ceil(win_times)==120)[0])
 
     plt.xlabel('Time (s)')
     plt.yticks(np.arange(len(yticks)),yticks,rotation=0,fontsize=10)
-    plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-60)
+    plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-120)
     if xlim is not None:
         plt.xlim(xlim)
     plt.clim([0,1])
@@ -352,8 +353,8 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
 
 def plot_and_save_detection_figure(mat,win_times,yticks,fig_save_path,xlim = None,cmap=False):
     # plt.subplots(figsize=(48,24))
-    plot_onset_lower = np.argwhere(np.ceil(win_times)==50)[0]
-    plot_onset_upper = np.argwhere(np.ceil(win_times)==140)[0] if max(win_times) > 140 else mat.shape[1]
+    plot_onset_lower = np.argwhere(np.ceil(win_times)==120)[0]
+    plot_onset_upper = np.argwhere(np.ceil(win_times)==210)[0] if max(win_times) > 210 else mat.shape[1]
     plt.imshow(mat[:,int(plot_onset_lower):int(plot_onset_upper)],cmap=cmap)
 
     plt.xticks([])
@@ -388,18 +389,19 @@ def main():
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
-        # if pt not in ['CHOP024']:
-        #     continue
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
+
         # Skipping if no training data has been identified
-        #         
         if len(row.interictal_training) == 0:
             continue
+
         # Loading data from bids
-        inter_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,'interictal')
+        inter_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS"),pt,'interictal')
+
         # Pruning channels
         chn_labels = remove_scalp_electrodes(inter_raw.columns)
         inter_raw = inter_raw[chn_labels]
+
         try: # channel localization exception catch
             electrode_localizations,electrode_regions = electrode_wrapper(pt,rid_hup,datapath)
             if pt[:3] == 'CHO':
@@ -415,14 +417,16 @@ def main():
             print(f"electrode localization failed for {pt}")
             neural_channels = chn_labels
         inter_neural = inter_raw.loc[:,neural_channels]
-        if pt == 'HUP266':
-            inter_neural.iloc[:,:22] = inter_neural.iloc[:,:22]*1e-3
+        
+        # get baseline stds for stimulation artifact interpolation
+        baseline_stds = inter_neural.std().to_numpy()
+
         for i_mdl,mdl_str in  enumerate(all_mdl_strs):
             wvcheck = mdl_str=='WVNT'
             # Preprocess the signal
             target=128
-            _, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
-            
+            inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
+            inter_bad_ch_list = inter_pre.columns[~mask]
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
             seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
@@ -435,20 +439,32 @@ def main():
                 set_seed(1071999)
                 qbar.set_description(f"{mdl_str} processing seizure {i}")
                 # Load in seizure and metadata for BIDS path
-                seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+                seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
                 # run = int(sz_row.IEEGID)
                 # Filter out bad channels from interictal clip
                 seizure = seizure[neural_channels]
-                if pt == 'HUP266':
-                    seizure.iloc[:,:22] = seizure.iloc[:,:22]*1e-3
-                # Preprocess seizure for seizure detection task
-                seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
+                # if pt == 'HUP266':
+                #     seizure.iloc[:,:22] = seizure.iloc[:,:22]*1e-3
+
+                # Interpolating stimulation artifact
+                if sz_row.stim == 1:
+                    pk_idxs,stim_chs = stim_detect(seizure,threshold=baseline_stds*100,fs=fs_raw)
+                    seizure = barndoor(seizure,pk_idxs,fs_raw,plot=False)
+                    seizure = seizure.iloc[:,~stim_chs]
                 
+                # Preprocess seizure for seizure detection task
+                seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=inter_bad_ch_list)
+                
+                noisy_channel_mask = seizure_pre.abs().max() <= (np.median(seizure_pre.abs().max())*50)
+                # noisy_channel_list = seizure_pre.columns[noisy_channel_mask].to_list()
+                seizure_pre = seizure_pre.loc[:,noisy_channel_mask]
+
                 # Perform overwrite check
                 prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
-                sz_train = seizure_pre.loc[:fs*30,:]
+                sz_train = seizure_pre.loc[:fs*60,:]
 
                 if mdl_str in ['LSTM','LSTMX']:
                     ##############################
@@ -515,11 +531,12 @@ def main():
                 sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)
                 os.makedirs(ospj(prodatapath,pt),exist_ok=True)
                 sz_prob_df.to_pickle(ospj(prodatapath,pt,prob_path))
+                
                 ### Visualization
                 # np.save(ospj(prodatapath,pt,prob_path),sz_prob)
                 # np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
-                detect_idx = np.argwhere(np.ceil(time_wins)==60)[0]
-                first_detect = np.argmax(sz_prob[:,int(detect_idx):]>.75,axis=1)
+                detect_idx = np.argwhere(np.ceil(time_wins)==120)[0]
+                first_detect = np.argmax(sz_prob[:,int(detect_idx):]>.5,axis=1)
                 first_detect[first_detect == 0] = sz_prob.shape[1]
                 ch_sorting = np.argsort(first_detect)
                 colors = sns.color_palette("deep", len(all_mdl_strs))

@@ -1,8 +1,6 @@
 ### SAVING INTERICTAL TRAINING DATA IN BIDS TO LEIF
 import numpy as np
 import pandas as pd
-import json
-import os
 from os.path import join as ospj
 from utils import *
 import scipy as sc
@@ -22,7 +20,7 @@ usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -98,12 +96,11 @@ def main():
         data_np_ds = sc.signal.resample(data_np,signal_len,axis=1)
         fs = TARGET
 
-
         # save the data
         # run is the iEEG file number
         # task is ictal with the start time in seconds appended
         data_info = mne.create_info(
-            ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
+            ch_names=list(data.columns), sfreq=fs, ch_types= "seeg", verbose=False
         )
         
         raw = mne.io.RawArray(
