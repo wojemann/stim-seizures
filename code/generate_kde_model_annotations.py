@@ -91,20 +91,17 @@ def main():
                     biggest_pk_idx = np.where(kde_vals[kde_peaks]>(np.mean(kde_vals)+np.std(kde_vals)))[0][-1]
                 except:
                     biggest_pk_idx = np.argmax(kde_vals[kde_peaks])
-                if biggest_pk_idx == len(kde_peaks)-1:
-                    print(f"{pt} has no second {mdl_str} peaks")
-                    biggest_pk_idx = 0
 
                 # Identify optimal threshold between peaks
-                if len(kde_peaks) == 1:
-                    start, end = biggest_pk_idx, (biggest_pk_idx + int(len(thresh_sweep)/4))
+                # Identify optimal threshold as knee between peaks
+                if (len(kde_peaks) == 1) or (biggest_pk_idx == (len(kde_peaks)-1)):
+                    start, end = kde_peaks[biggest_pk_idx], int(kde_peaks[biggest_pk_idx] + (len(thresh_sweep)-kde_peaks[biggest_pk_idx])/4)
                 else:
                     start, end = kde_peaks[biggest_pk_idx], kde_peaks[biggest_pk_idx+1]
-                # trough_idx = np.argmin(kde_vals[start:end]) + start
-                # trough_idx = (end-start)/2 + start
+
                 kneedle = KneeLocator(thresh_sweep[start+10:end],kde_vals[start+10:end],
                       curve='convex',direction='decreasing',interp_method='polynomial')
-                # final_thresh = thresh_sweep[int(trough_idx)]]
+
                 final_thresh = kneedle.knee
 
                 predicted_channels['Patient'].append(sz_row.Patient)
@@ -117,10 +114,7 @@ def main():
                 predicted_channels['threshold'].append(final_thresh)
 
                 # get late szing mask
-                late = np.sum(sz_prob[:,(onset_index*-1):] > final_thresh,axis=1) > 30
-                sz_prob_reject = sz_prob[~late,:]
                 sz_prob_reject = sz_prob
-                prob_chs_reject = prob_chs[~late]
                 prob_chs_reject = prob_chs
                 # sz_clf_final = sz_prob > final_thresh
 

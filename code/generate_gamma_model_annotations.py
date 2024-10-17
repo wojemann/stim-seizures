@@ -96,10 +96,7 @@ def main():
                 predicted_channels['threshold'].append(final_thresh)
 
                 # get late szing mask
-                late = np.sum(sz_prob[:,(onset_index*-1):] > final_thresh,axis=1) > 30
-                sz_prob_reject = sz_prob[~late,:]
                 sz_prob_reject = sz_prob
-                prob_chs_reject = prob_chs[~late]
                 prob_chs_reject = prob_chs
                 # sz_clf_final = sz_prob > final_thresh
 
