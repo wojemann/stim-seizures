@@ -51,7 +51,7 @@ def main():
 
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
         for _,sz_row in qbar:
-            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
                 # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
