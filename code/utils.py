@@ -35,7 +35,6 @@ import random
 import json
 
 # data IO imports
-import mne
 import mne_bids
 from mne_bids import BIDSPath, read_raw_bids
 

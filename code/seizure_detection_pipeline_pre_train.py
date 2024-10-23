@@ -31,7 +31,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = True
+OVERWRITE = False
 
 # Functions for data formatting in autoregressive problem
 # prepare_segment turns interictal/seizure clip into input and target data for autoregression
@@ -381,18 +381,14 @@ def main():
     all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
-    pt_skip = True
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
 
-        if pt not in ['HUP249']:
-            if pt_skip:
-                continue
-        else:
-            pt_skip = False
+        if pt not in ['CHOP044']:
+            continue
        
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
@@ -429,6 +425,7 @@ def main():
             # Preprocess the signal
             target=128
             inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
+
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
             seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
@@ -452,7 +449,6 @@ def main():
                 if sz_row.stim == 1:
                     stim_chs = np.zeros((len(seizure.columns),),dtype=bool)
                     for ch in sz_row.stim_channels.split('-'):
-                        # print(clean_labels([ch],pt))
                         ch = clean_labels([ch],pt)[0]
                         stim_chs += np.array([ch == c for c in seizure.columns])
                     pk_idxs,_ = stim_detect(seizure,threshold=baseline_stds*100,fs=fs_raw)
