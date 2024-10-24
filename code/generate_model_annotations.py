@@ -66,7 +66,6 @@ def main():
         for _,sz_row in qbar:
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
-                # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
                 prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
@@ -74,6 +73,8 @@ def main():
                 sz_prob.drop('time',axis=1,inplace=True)
                 prob_chs = sz_prob.columns.to_numpy()
                 sz_prob = sz_prob.to_numpy().T
+                # scaler = RobustScaler()
+                # sz_prob = scaler.fit_transform(sz_prob.reshape(-1,1)).reshape(sz_prob.shape)
                 sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
                 # Match seizure using approximate onset time in annotations, patient name, and task
                 task_time = int(task[np.where([s.isnumeric() for s in task])[0][0]:])
@@ -91,8 +92,9 @@ def main():
                 onset_index = np.argmin(np.abs((time_wins-onset_time) + time_diff))
                 # Find closest index to consensus 10 second spread time
                 spread_index = np.argmin(np.abs((time_wins-(onset_time+10)) + time_diff))
-                # sweep threshold
-                for final_thresh in np.arange(0,1,.01):
+                # sweep threshold - np.arange(0,1,0.1)
+                # low,high = np.percentile(sz_prob.flatten(),[5,95])
+                for final_thresh in np.linspace(0,1,500):
                     predicted_channels['Patient'].append(sz_row.Patient)
                     predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
                     predicted_channels['model'].append(mdl_str)
