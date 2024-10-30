@@ -31,7 +31,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = False
+OVERWRITE = True
 
 # Functions for data formatting in autoregressive problem
 # prepare_segment turns interictal/seizure clip into input and target data for autoregression
@@ -375,20 +375,23 @@ def main():
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
 
+    onset_time = 120
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
     all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
+
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
+
     # Iterating through each patient that we have annotations for
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
 
-        if pt not in ['CHOP044']:
-            continue
+        # if pt not in ['CHOP044']:
+        #     continue
        
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
@@ -427,9 +430,10 @@ def main():
             inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
 
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-            seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+            # seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
-            
+            seizure_times = seizures_df[seizures_df.Patient == pt]
+
             # Iterating through each seizure for that patient
             qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),leave=False)
             for i,(_,sz_row) in enumerate(qbar):
@@ -442,8 +446,6 @@ def main():
                 # run = int(sz_row.IEEGID)
                 # Filter out bad channels from interictal clip
                 seizure = seizure[neural_channels]
-                # if pt == 'HUP266':
-                #     seizure.iloc[:,:22] = seizure.iloc[:,:22]*1e-3
 
                 # Interpolating stimulation artifact
                 if sz_row.stim == 1:
@@ -458,7 +460,7 @@ def main():
                 # Preprocess seizure for seizure detection task
                 seizure_pre, fs = preprocess_for_detection(seizure,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask=mask)
                 
-                noisy_channel_mask = seizure_pre.loc[120*fs:,:].abs().max() <= (np.median(seizure_pre.loc[120*fs:,:].abs().max())*50)
+                noisy_channel_mask = seizure_pre.loc[onset_time*fs:,:].abs().max() <= (np.median(seizure_pre.loc[onset_time*fs:,:].abs().max())*50)
                 # noisy_channel_list = seizure_pre.columns[noisy_channel_mask].to_list()
                 seizure_pre = seizure_pre.loc[:,noisy_channel_mask]
 

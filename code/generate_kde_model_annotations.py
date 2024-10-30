@@ -45,14 +45,15 @@ def main():
         if len(row.interictal_training) == 0:
             continue
         ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-        seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+        # seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
         ###
+        seizure_times = seizures_df[seizures_df.Patient == pt]
 
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
         for _,sz_row in qbar:
-            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS_v1"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+            _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
+            # print(task)
             for mdl_str in mdl_strs:
-                # clf_fs = 128 if mdl_str == 'WVNT' else 256
                 clf_fs = 128
                 prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
@@ -80,8 +81,8 @@ def main():
                 # Find closest index to consensus 10 second spread time
                 spread_index = np.argmin(np.abs((time_wins-(onset_time+10)) + time_diff))
                 # Get KDE for all probability values
-                probabilities = sz_prob.flatten()
-                thresh_sweep = np.linspace(min(probabilities),max(probabilities),2000)
+                probabilities = sz_prob[:,:-onset_index].flatten()
+                thresh_sweep = np.linspace(min(probabilities),max(probabilities),3000)
                 kde_model = sc.stats.gaussian_kde(probabilities,'scott')
                 kde_vals = kde_model(thresh_sweep)
 
@@ -95,11 +96,12 @@ def main():
                 # Identify optimal threshold between peaks
                 # Identify optimal threshold as knee between peaks
                 if (len(kde_peaks) == 1) or (biggest_pk_idx == (len(kde_peaks)-1)):
-                    start, end = kde_peaks[biggest_pk_idx], int(kde_peaks[biggest_pk_idx] + (len(thresh_sweep)-kde_peaks[biggest_pk_idx])/4)
+                    # start, end = kde_peaks[biggest_pk_idx], int(kde_peaks[biggest_pk_idx] + (len(thresh_sweep)-kde_peaks[biggest_pk_idx])/4)
+                    start, end = kde_peaks[biggest_pk_idx], len(kde_vals)-1
                 else:
                     start, end = kde_peaks[biggest_pk_idx], kde_peaks[biggest_pk_idx+1]
 
-                kneedle = KneeLocator(thresh_sweep[start+10:end],kde_vals[start+10:end],
+                kneedle = KneeLocator(thresh_sweep[start+7:end],kde_vals[start+7:end],
                       curve='convex',direction='decreasing',interp_method='polynomial')
 
                 final_thresh = kneedle.knee

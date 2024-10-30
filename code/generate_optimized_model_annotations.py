@@ -5,22 +5,14 @@ from ieeg.auth import Session
 import numpy as np
 import scipy as sc
 import pandas as pd
-import json
-from scipy.linalg import hankel
 from tqdm import tqdm
-from sklearn.metrics import recall_score
-from sklearn.metrics import precision_score
-from sklearn.preprocessing import RobustScaler
+
 
 # Plotting
 import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 # OS imports
-import os
 from os.path import join as ospj
-from os.path import exists as ospe
 from utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
@@ -57,21 +49,24 @@ def main():
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient -- {pt}",refresh=True)
-        if len(row.interictal_training) == 0:
+        if (len(row.interictal_training) == 0) or (pt not in tuned_thresholds.Patient.to_numpy()):
             continue
-
         pt_thresh = tuned_thresholds[(tuned_thresholds.Patient == pt) & (tuned_thresholds.model == mdl_str)]['threshold'].item()
         seizure_times = seizures_df[seizures_df.Patient == pt]
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
+
         for _,sz_row in qbar:
+            if (pt == 'CHOP037') & (sz_row.approximate_onset == 962082.12):
+                    continue
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
-            prob_path = f"probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+            prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
             sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
             time_wins = sz_prob.time.to_numpy()
             sz_prob.drop('time',axis=1,inplace=True)
             prob_chs = sz_prob.columns.to_numpy()
             sz_prob = sz_prob.to_numpy().T
-            sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
+            # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
+            sz_prob = sz_prob-np.min(sz_prob)
 
             # Generate predicitons
             predicted_channels['Patient'].append(sz_row.Patient)
