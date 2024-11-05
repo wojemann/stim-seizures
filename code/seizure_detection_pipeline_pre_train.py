@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.linalg import hankel
 from tqdm import tqdm
 from sklearn.preprocessing import RobustScaler
+from sklearn.linear_model import LinearRegression
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -134,18 +135,40 @@ class LSTMModel(nn.Module):
     def __str__(self):
          return "LSTM"
     
-class LRModel(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(LRModel, self).__init__()
-        self.linear = nn.Linear(input_size, output_size)
+class LTI():
+    def __init__(self, win_size = 1, stride = 0.5, fs = 256):
+        self.win_size = win_size
+        self.stride = stride
+        self.fs = int(fs)
+        self.model = LinearRegression(fit_intercept=False)
 
+    def fit(self, x):
+        # x should be samples x channels df
+        self.scaler = RobustScaler().fit(x)
+        nx = self.scaler.transform(x)
+        self.model.fit(nx[:-1,:],nx[1:,:])
+        
     def forward(self, x):
-        # Flatten the input along the 'sequence length' dimension
-        x = x.squeeze()
-        out = self.linear(x)
-        return out
+        ch_names = x.columns
+        x = self.scaler.transform(x)
+        y = self.model.predict(x[:-1,:])
+        se = pd.DataFrame((x[1:,:]-y)**2,columns=ch_names)
+        mse = se.rolling(self.win_size*self.fs,min_periods=self.win_size*self.fs,center=False).mean()
+        mse_wins = mse.iloc[::int(self.stride*self.fs)].reset_index(drop=True)
+        return mse_wins[~mse_wins.isna().any(axis=1)].to_numpy().T
+
+    
+    def get_times(self, x):
+        # x should be samples x channels df
+        time_arr = np.arange(len(x))/self.fs
+        right_time_arr = time_arr[int((self.win_size*self.fs)-1)::int(self.stride*self.fs)]
+        return right_time_arr
+    
     def __str__(self):
-        return "LR"
+        return "LTI"
+    
+    def __call__(self, *args):
+        return self.forward(*args)
 
 class AbsSlope():
     def __init__(self, win_size = 1, stride = 0.5, fs = 256):
@@ -346,7 +369,7 @@ def plot_and_save_detection(mat,win_times,yticks,fig_save_path,xlim = None):
     plt.xticks(np.arange(0,len(win_times),10),win_times.round(1)[np.arange(0,len(win_times),10)]-120)
     if xlim is not None:
         plt.xlim(xlim)
-    plt.clim([0,1])
+    plt.clim([0,4])
     plt.savefig(fig_save_path)
 
 def plot_and_save_detection_figure(mat,win_times,yticks,fig_save_path,xlim = None,cmap=False):
@@ -379,7 +402,8 @@ def main():
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
-    all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
+    # all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
+    all_mdl_strs = ['LTI']
 
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
@@ -390,8 +414,8 @@ def main():
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
 
-        # if pt not in ['CHOP044']:
-        #     continue
+        if pt not in ['HUP238']:
+            continue
        
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
@@ -519,7 +543,7 @@ def main():
                     mdl_outs = raw_sz_vals
                     ###
                 
-                elif mdl_str in ['NRG','AbsSlp','WVNT']:
+                elif mdl_str in ['NRG','AbsSlp','WVNT','LTI']:
                     if mdl_str == 'AbsSlp':
                         model = AbsSlope(1,.5, fs)
                         model.fit(sz_train)
@@ -528,6 +552,9 @@ def main():
                         model.fit(sz_train)
                     elif mdl_str == 'WVNT':
                         model = WVNT(wave_model,1,.5,fs)
+                        model.fit(sz_train)
+                    elif mdl_str == 'LTI':
+                        model = LTI(1,.5,fs)
                         model.fit(sz_train)
                     mdl_outs = model(seizure_pre)
                     time_wins = model.get_times(seizure_pre)

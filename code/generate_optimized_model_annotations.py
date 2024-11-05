@@ -94,24 +94,25 @@ def main():
                 sz_times_arr -= np.min(sz_times_arr)
                 sz_ch_arr = prob_chs[seized_idxs]
                 sz_ch_arr = np.array([s.split("-")[0] for s in sz_ch_arr]).flatten()
+                onset_index = np.min(first_sz_idxs[seized_idxs])
             else:
                 sz_ch_arr = []
                 sz_times_arr = []
+                onset_index = np.min(first_sz_idxs)
             predicted_channels['sz_chs'].append(sz_ch_arr)
             predicted_channels['sz_times'].append(sz_times_arr)
 
-            onset_index = np.min(first_sz_idxs)
             new_onset_time = time_wins[onset_index]
             spread_index = np.argmin(np.abs(time_wins-(new_onset_time + 10)))
 
-            mdl_ueo_idx = np.all(sz_prob[:,onset_index:onset_index+5] > pt_thresh,axis=1)
+            mdl_ueo_idx = np.sum(sz_prob[:,onset_index:onset_index+10] > pt_thresh,axis=1) > 6
             mdl_ueo_ch_bp = prob_chs[mdl_ueo_idx]
             mdl_ueo_ch_strict = np.array([s.split("-")[0] for s in mdl_ueo_ch_bp]).flatten()
             mdl_ueo_ch_loose = np.unique(np.array([s.split("-") for s in mdl_ueo_ch_bp]).flatten())
             predicted_channels['ueo_chs_strict'].append(mdl_ueo_ch_strict)
             predicted_channels['ueo_chs_loose'].append(mdl_ueo_ch_loose)
 
-            mdl_sec_idx = np.all(sz_prob[:,spread_index:spread_index+5] > pt_thresh,axis=1)
+            mdl_sec_idx = np.sum(sz_prob[:,spread_index:spread_index+10] > pt_thresh,axis=1) > 6
             mdl_sec_ch_bp = prob_chs[mdl_sec_idx]
             mdl_sec_ch_strict = np.array([s.split("-")[0] for s in mdl_sec_ch_bp]).flatten()
             mdl_sec_ch_loose = np.unique(np.array([s.split("-") for s in mdl_sec_ch_bp]).flatten())
@@ -119,7 +120,7 @@ def main():
             predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v1.pkl"))
     predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()
