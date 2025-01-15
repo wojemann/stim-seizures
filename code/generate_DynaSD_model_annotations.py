@@ -12,8 +12,7 @@ import matplotlib.pyplot as plt
 from os.path import join as ospj
 from utils import *
 import sys
-sys.path.append('/users/wojemann/iEEG_processing')
-sys.path.append('/users/wojemann/DSOSD/')
+sys.path.append('/mnt/sauce/littlab/users/wojemann/DSOSD/')
 from DSOSD.model import NDD
 
 plt.rcParams['image.cmap'] = 'magma'
