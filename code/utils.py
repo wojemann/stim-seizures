@@ -47,14 +47,13 @@ import torch
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
-from scipy.integrate import simpson
+from scipy.integrate import simps
 import scipy.signal as sig
 import scipy as sc
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import NMF
 from sklearn.utils import resample
 
-# from scipy.integrate import simpson
 import matplotlib.pyplot as plt
 import seaborn as sns
 from fooof import FOOOFGroup
@@ -316,7 +315,7 @@ def clean_labels(channel_li: list, pt: str) -> list:
 
 
 def get_apn_dkt(
-    fname="/mnt/leif/littlab/users/pattnaik/ictal_patterns/data/metadata/apn_dkt_labels.txt",
+    fname="/mnt/sauce/littlab/users/pattnaik/ictal_patterns/data/metadata/apn_dkt_labels.txt",
 ) -> dict:
     """Function to get antsPyNet DKT labels from text file
 
@@ -420,7 +419,7 @@ def load_rid_forjson(rid):
     load_rid_forjson loads the DKTantspynet output from IEEG_recon
     """
     dkt_directory = glob(
-        f"/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv"
+        f"/mnt/sauce/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv"
     )[0]
     brain_df = pd.read_csv(dkt_directory, index_col=0)
     brain_df["name"] = brain_df["name"].astype(str) + "-CAR"
@@ -440,7 +439,7 @@ def label_fix(rid, threshold=0.25, return_old=False, df=None):
     else:
         brain_df = load_rid_forjson(rid)
     json_labels = glob(
-        f"/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json"
+        f"/mnt/sauce/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json"
     )[0]
     workinglabels = pd.read_json(json_labels, lines=True)
 
@@ -1177,12 +1176,12 @@ def bandpower_fooof(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_s
         if np.logical_and(60 >= lo, 60 <= hi):
             idx1 = np.logical_and(freq >= lo, freq <= 55)
             idx2 = np.logical_and(freq >= 65, freq <= hi)
-            bp1 = simpson(
+            bp1 = simps(
                 y=residual[:, idx1],
                 x=freq[idx1],
                 dx=freq[1] - freq[0]
             )
-            bp2 = simpson(
+            bp2 = simps(
                 y=residual[:, idx2],
                 x=freq[idx2],
                 dx=freq[1] - freq[0]
@@ -1190,7 +1189,7 @@ def bandpower_fooof(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_s
             bandpowers[i_band] = bp1 + bp2
         else:
             idx = np.logical_and(freq >= lo, freq <= hi)
-            bandpowers[i_band] = simpson(
+            bandpowers[i_band] = simps(
                 y=residual[:, idx],
                 x=freq[idx],
                 dx=freq[1] - freq[0]
@@ -1202,7 +1201,7 @@ def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2,
     Calculates the relative bandpower of a signal x, using a butterworth filter of order 'order'
     and bandpass filter between lo and hi Hz.
 
-    Use scipy.signal.welch and scipy.signal.simpson
+    Use scipy.signal.welch and scipy.signal.simps
     """
     bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
 
@@ -1217,10 +1216,10 @@ def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2,
     all_bands = np.zeros((pxx.shape[0], len(bands)))
     for i, (band, (lo, hi)) in enumerate(bands.items()):
         idx_band = np.logical_and(freq >= lo, freq <= hi)
-        bp = simpson(pxx[:, idx_band], dx=freq[1] - freq[0])
+        bp = simps(pxx[:, idx_band], dx=freq[1] - freq[0])
         # relative
         if relative:
-            bp /= simpson(pxx, dx=freq[1] - freq[0])
+            bp /= simps(pxx, dx=freq[1] - freq[0])
         all_bands[:, i] = bp
     return all_bands
     # return bp
@@ -1385,12 +1384,12 @@ def spectral_features(
         if np.logical_and(60 >= lo, 60 <= hi):
             idx1 = np.logical_and(freq >= lo, freq <= 55)
             idx2 = np.logical_and(freq >= 65, freq <= hi)
-            bp1 = simpson(y=residual[:, idx1], x=freq[idx1], dx=freq[1] - freq[0])
-            bp2 = simpson(y=residual[:, idx2], x=freq[idx2], dx=freq[1] - freq[0])
+            bp1 = simps(y=residual[:, idx1], x=freq[idx1], dx=freq[1] - freq[0])
+            bp2 = simps(y=residual[:, idx2], x=freq[idx2], dx=freq[1] - freq[0])
             bandpowers[i_band] = bp1 + bp2
         else:
             idx = np.logical_and(freq >= lo, freq <= hi)
-            bandpowers[i_band] = simpson(
+            bandpowers[i_band] = simps(
                 y=residual[:, idx], x=freq[idx], dx=freq[1] - freq[0]
             )
     aperiodic_params = np.array([i.aperiodic_params for i in fres])

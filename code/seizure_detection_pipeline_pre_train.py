@@ -312,12 +312,12 @@ def electrode_wrapper(pt,rid_hup,datapath):
         rid = str(rid)
         if len(rid) < 4:
             rid = '0' + rid
-        recon_path = ospj('/mnt','leif','littlab','data',
+        recon_path = ospj('/mnt','sauce','littlab','data',
                             'Human_Data','CNT_iEEG_BIDS',
                             f'sub-RID{rid}','derivatives','ieeg_recon',
                             'module3/')
         if not os.path.exists(recon_path):
-            recon_path =  ospj('/mnt','leif','littlab','data',
+            recon_path =  ospj('/mnt','sauce','littlab','data',
                             'Human_Data','recon','BIDS_penn',
                             f'sub-RID{rid}','derivatives','ieeg_recon',
                             'module3/')
@@ -402,8 +402,8 @@ def main():
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
-    # all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
-    all_mdl_strs = ['LTI']
+    all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
+    # all_mdl_strs = ['LTI']
 
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
@@ -414,8 +414,8 @@ def main():
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
 
-        if pt not in ['HUP238']:
-            continue
+        # if pt not in ['HUP238']:
+        #     continue
        
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
@@ -467,7 +467,7 @@ def main():
                 qbar.set_description(f"{mdl_str} processing seizure {i}")
                 # Load in seizure and metadata for BIDS path
                 seizure,fs_raw, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
-                # run = int(sz_row.IEEGID)
+
                 # Filter out bad channels from interictal clip
                 seizure = seizure[neural_channels]
 
@@ -530,6 +530,7 @@ def main():
 
                     # Train the model, this will just modify the model object, no returns
                     train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
+                    
                     ################################################
                     seizure_z = model.scaler_transform(seizure_pre)
                     seizure_z = pd.DataFrame(seizure_z,columns=seizure_pre.columns)
