@@ -24,7 +24,7 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_strs = ['LSTM','AbsSlp','NRG','WVNT']
+    mdl_strs = ['LSTM']#,'AbsSlp','NRG','WVNT']
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
@@ -46,9 +46,10 @@ def main():
         if len(row.interictal_training) == 0:
             continue
         ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-        # seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+        seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+        # seizure_times = seizures_df[seizures_df.Patient == pt]
+
         ###
-        seizure_times = seizures_df[seizures_df.Patient == pt]
 
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
         for _,sz_row in qbar:
@@ -88,8 +89,9 @@ def main():
 
 
                 model = NDD(fs = 128)
-                threshold = model.get_gaussian_threshold(sz_prob)
-                sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:])
+                threshold = model.get_gaussianx_threshold(sz_prob,noise_floor='val')
+                # threshold = 1.32
+                sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:],threshold=threshold)
                 sz_spread -= np.min(sz_spread.min())
 
                 predicted_channels['Patient'].append(sz_row.Patient)
@@ -118,6 +120,6 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"DynaSD_gaussian_predicted_channels_nor.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"DynaSD_gaussianx_val_predicted_channels_nor.pkl"))
 if __name__ == "__main__":
     main()

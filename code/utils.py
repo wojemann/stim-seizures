@@ -465,6 +465,29 @@ def label_fix(rid, threshold=0.25, return_old=False, df=None):
         return relabeled_df, brain_df
     return relabeled_df
 
+def electrode_wrapper(pt,rid_hup,datapath):
+    if pt[:3] == 'HUP':
+        hup_no = pt[3:]
+        rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
+        rid = str(rid)
+        if len(rid) < 4:
+            rid = '0' + rid
+        recon_path = ospj('/mnt','sauce','littlab','data',
+                            'Human_Data','CNT_iEEG_BIDS',
+                            f'sub-RID{rid}','derivatives','ieeg_recon',
+                            'module3/')
+        if not os.path.exists(recon_path):
+            recon_path =  ospj('/mnt','sauce','littlab','data',
+                            'Human_Data','recon','BIDS_penn',
+                            f'sub-RID{rid}','derivatives','ieeg_recon',
+                            'module3/')
+        electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
+        return electrode_localizations,electrode_regions
+    else:
+        recon_path = ospj(datapath,pt,f'{pt}_locations.xlsx')
+        electrode_localizations,electrode_regions = choptimize_localizations(recon_path,pt)
+        return electrode_localizations,electrode_regions
+
 def optimize_localizations(path_to_recon,RID):
     # /mnt/leif/littlab/data/Human_Data/recon/BIDS_penn/
     # python /mnt/leif/littlab/data/Human_Data/recon/code/run_penn_recons.py
@@ -624,7 +647,17 @@ def get_data_from_bids(root,subject,task_key,run=None,return_path=False,verbose=
 
 ################################################ Plotting and Visualization ################################################
 def plot_iEEG_data(
-    data: Union[pd.DataFrame, np.ndarray], t: np.ndarray, colors=None, dr=None, plot_color = 'k'
+    data,#: Union[pd.DataFrame, np.ndarray], 
+    fs=None,
+    t=None,
+    t_offset=0,
+    colors=None,
+    plot_color = 'k',
+    shade_color = None,
+    empty=False,
+    dr=None,
+    fig_size=None,
+    minmax=False
 ):
     """_summary_
 
@@ -637,27 +670,41 @@ def plot_iEEG_data(
     Returns:
         _type_: _description_
     """
+    if minmax:
+        data = data.apply(sc.stats.zscore)
+    if t is None:
+        t = np.arange(len(data))/fs
+
+    t += t_offset
     if data.shape[0] != np.size(t):
         data = data.T
+
     n_rows = data.shape[1]
     duration = t[-1] - t[0]
-
-    fig, ax = plt.subplots(figsize=(duration / 3, n_rows / 5))
+    
+    if fig_size is not None:
+        fig, ax = plt.subplots(figsize=fig_size)
+    else:
+        fig, ax = plt.subplots(figsize=(duration / 3, n_rows / 5))
+        
     sns.despine()
 
     ticklocs = []
     ax.set_xlim(t[0], t[-1])
+
     dmin = data.min().min()
     dmax = data.max().min()
 
     if dr is None:
         dr = (dmax - dmin) * 0.8  # Crowd them a bit.
+    # if minmax and (dr is None):
+    #     dr = 1
 
-    y0 = dmin
-    y1 = (n_rows - 1) * dr + dmax
-    ax.set_ylim(y0, y1)
-
+    y0 = dmin - dr
+    y1 = (n_rows-1) * dr + dmax + dr/2
+    ax.set_ylim([y0,y1])
     segs = []
+    
     for i in range(n_rows):
         if isinstance(data, pd.DataFrame):
             segs.append(np.column_stack((t, data.iloc[:, i])))
@@ -679,12 +726,29 @@ def plot_iEEG_data(
 
     if colors:
         for col, lab in zip(colors, ax.get_yticklabels()):
+            if col is None:
+                col = 'black'
             lab.set_color(col)
 
     ax.set_xlabel("Time (s)")
+
     if isinstance(data, pd.DataFrame):
         data = data.to_numpy()
+
     ax.plot(t, data + ticklocs, color=plot_color, lw=0.4)
+
+    if shade_color is not None:    
+        shade_y_ticks_background(ax, ticklocs, shade_color, alpha=0.3)
+
+    if empty:
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        # Optionally, remove grid lines if present
+        ax.grid(False)
+
+        # Keep tick labels but remove tick markers
+        ax.tick_params(axis='both', which='both', length=0)
 
     return fig, ax
 
