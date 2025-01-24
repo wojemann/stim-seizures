@@ -10,8 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Imports for deep learning
-import random
-
+from sklearn.preprocessing import RobustScaler
 
 # OS imports
 from os.path import join as ospj
@@ -45,24 +44,15 @@ for _,row in pbar:
         if len(row.interictal_training) == 0:
             continue
 
-        # Loading data from bids
-        inter_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS"),pt,'interictal')
-
-        # Pruning channels
-        chn_labels = remove_scalp_electrodes(inter_raw.columns)
-        inter_raw = inter_raw[chn_labels]
-
-        neural_channels = chn_labels
-        inter_neural = inter_raw.loc[:,neural_channels]
         # Preprocess the signal
         target=128
-        inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,'bipolar',target=target,wavenet=False,pre_mask = None)
 
         ### ONLY PREDICTING FOR SPONTANEOUS SEIZURES THAT HAVE BEEN ANNOTATED
         seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1) & (seizures_df.stim == 0)]
         ###
+
         sz_times_wannots = pd.merge_asof(seizure_times,
-                                    consensus_annots[['approximate_onset','Patient','all_chs','ueo_consensus','ueo_any','sec_consensus','sec_any']],
+                                    consensus_annots[['approximate_onset','Patient','all_chs','ueo_consensus','ueo_any','sec_consensus','sec_any','ueo_time_consensus']],
                                     on='approximate_onset',by='Patient',
                                     tolerance = 240,
                                     direction='nearest')
@@ -78,18 +68,33 @@ for _,row in pbar:
 
             seizure_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=False, verbose=0)
 
-            seizure_prep,fs = preprocess_for_detection(seizure_raw,fs_raw,
+            chn_labels = remove_scalp_electrodes(seizure_raw.columns)
+            seizure_neural = seizure_raw.loc[:,chn_labels]
+
+            seizure_prep,fs = preprocess_for_detection(seizure_neural,fs_raw,
                                                 wavenet=False,
-                                                pre_mask=mask,
+                                                pre_mask=[],
                                                 target=128)
             
-            seizure_prep.max()
-            noisy_channel_mask = seizure_prep.abs().max() <= (np.median(seizure_prep.abs().max())*50)
-            seizure_prep.columns[~noisy_channel_mask]
-            model = NDD(fs = fs)
-            model.fit(seizure_prep.iloc[:fs*60])
-            seizure_z = pd.DataFrame(model.scaler.transform(seizure_prep),columns=seizure_prep.columns)
+            # seizure_prep.max()
+            # noisy_channel_mask = seizure_prep.abs().max() <= (np.median(seizure_prep.abs().max())*50)
+            # seizure_prep.columns[~noisy_channel_mask]
+
+            scl = RobustScaler()
+            scl.fit(seizure_prep.iloc[:fs*60,])
+            
+            seizure_z = pd.DataFrame(scl.transform(seizure_prep),columns=seizure_prep.columns)
             seizure_z.columns = [x.split('-')[0] for x in seizure_z.columns]
+
+            approx_time = sz_row.approximate_onset
+            consensus_time = sz_row.ueo_time_consensus
+            
+            # identifying difference between annotator and approximate time
+            time_diff = consensus_time - approx_time
+
+            onset_time = 120 + time_diff
+
+            # Find closest index to consensus onset time relative to actual onset time (consensus - approximate and find closest to 120 + diff)
 
             for ch in sz_row.ueo_chs:
                 if ch not in seizure_z.columns:
@@ -99,7 +104,7 @@ for _,row in pbar:
                     'approximate_onset': sz_row.approximate_onset,
                     'channel': ch,
                     'type': 'ueo',
-                    'signal': seizure_z.loc[120*fs:122*fs,ch].to_numpy()
+                    'signal': seizure_z.loc[int(onset_time*fs):int((onset_time+2)*fs),ch].to_numpy()
                     })
 
             for ch in sz_row.sec_chs:
@@ -110,7 +115,7 @@ for _,row in pbar:
                     'approximate_onset': sz_row.approximate_onset,
                     'channel': ch,
                     'type': 'sec',
-                    'signal': seizure_z.loc[130*fs:132*fs,ch].to_numpy()
+                    'signal': seizure_z.loc[int((onset_time+10)*fs):int((onset_time+12)*fs),ch].to_numpy()
                     })
 
             all_sig_chs = list(set(sz_row.ueo_chs + sz_row.sec_chs))
