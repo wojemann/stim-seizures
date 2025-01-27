@@ -17,9 +17,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-# Imports for analysis
-from seizure_detection_pipeline import prepare_segment, TRAIN_WIN, PRED_WIN
-
 # OS imports
 import os
 from os.path import join as ospj
@@ -37,7 +34,7 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
-    mdl_strs = ['LSTM','AbsSlp','NRG','WVNT']
+    mdl_strs = ['LSTM','AbsSlp','WVNT']
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
@@ -76,7 +73,8 @@ def main():
                 # scaler = RobustScaler()
                 # sz_prob = scaler.fit_transform(sz_prob.reshape(-1,1)).reshape(sz_prob.shape)
                 # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
-                sz_prob = sz_prob-np.min(sz_prob)
+                if mdl_str == 'LSTM':
+                    sz_prob = sz_prob-np.min(sz_prob)
                 # Match seizure using approximate onset time in annotations, patient name, and task
                 task_time = int(task[np.where([s.isnumeric() for s in task])[0][0]:])
                 approx_time = sz_row.approximate_onset
@@ -96,7 +94,7 @@ def main():
                 # sweep threshold - np.arange(0,1,0.1)
                 # low,high = np.percentile(sz_prob.flatten(),[5,95])
                 # for final_thresh in np.linspace(np.min(sz_prob),np.percentile(sz_prob,95),500):
-                for final_thresh in np.linspace(0,3,500):
+                for final_thresh in np.linspace(0,4,750):
                     predicted_channels['Patient'].append(sz_row.Patient)
                     predicted_channels['iEEG_ID'].append(sz_row.IEEGname)
                     predicted_channels['model'].append(mdl_str)
@@ -131,7 +129,7 @@ def main():
                     predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels_norsc.pkl"))
-    predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
+    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels_norsc_v2.pkl"))
+    # predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

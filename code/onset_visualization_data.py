@@ -36,9 +36,6 @@ for _,row in pbar:
     try:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
-
-        # if pt not in ['HUP238']:
-        #     continue
         
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
@@ -65,6 +62,7 @@ for _,row in pbar:
         for i,(_,sz_row) in enumerate(qbar):
             if (pt == 'CHOP037') & (sz_row.approximate_onset == 962082.12):
                 continue
+            
 
             seizure_raw,fs_raw = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=False, verbose=0)
 
