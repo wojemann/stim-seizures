@@ -236,9 +236,6 @@ class NRG():
         x = x.T
         nrg = ft_extract(x, self.fs, self.function, self.win_size, self.stride)
         nrg = nrg.squeeze()
-        # normalized_nrg = scale_normalized(nrg,15)
-        # normalized_nrg = minmax_scale(nrg.reshape(-1,1)).reshape(nrg.shape)
-        # return normalized_nrg
         return nrg/10
     def __call__(self, *args):
         return self.forward(*args)

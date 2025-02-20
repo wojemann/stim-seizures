@@ -24,6 +24,7 @@ def main():
     annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
 
     montage = 'bipolar'
+    threshold_str = 'automedian'
     mdl_strs = ['LSTM']#,'AbsSlp','NRG','WVNT']
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
@@ -89,7 +90,7 @@ def main():
 
 
                 model = NDD(fs = 128)
-                threshold = model.get_gaussianx_threshold(sz_prob,noise_floor='val')
+                threshold = model.get_gaussianx_threshold(sz_prob.iloc[:offset_index,:],noise_floor=threshold_str)
                 # threshold = 1.32
                 sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:],threshold=threshold)
                 sz_spread -= np.min(sz_spread.min())
@@ -120,6 +121,6 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"DynaSD_gaussianx_val_predicted_channels_nor.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp.pkl"))
 if __name__ == "__main__":
     main()
