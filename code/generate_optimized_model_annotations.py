@@ -59,14 +59,15 @@ def main():
             if (pt == 'CHOP037') & (sz_row.approximate_onset == 962082.12):
                     continue
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
-            prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+            prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
             sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
             time_wins = sz_prob.time.to_numpy()
             sz_prob.drop('time',axis=1,inplace=True)
             prob_chs = sz_prob.columns.to_numpy()
             sz_prob = sz_prob.to_numpy().T
+            
             # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
-            sz_prob = sz_prob-np.min(sz_prob)
+            # sz_prob = sz_prob-np.min(sz_prob)
 
             # Generate predicitons
             predicted_channels['Patient'].append(sz_row.Patient)
@@ -78,15 +79,17 @@ def main():
             predicted_channels['threshold'].append(pt_thresh)
             predicted_channels['all_channels'].append(np.array([s.split("-")[0] for s in prob_chs]).flatten())
             
-            sz_clf_final = sz_prob > pt_thresh
+            sz_clf = sz_prob > pt_thresh
+            sz_clf_final = sc.ndimage.median_filter(sz_clf,size=10,mode='nearest',axes=0,origin=0)
 
             first_sz_idx_offset = np.argmin(np.abs(time_wins-onset_time))
             
             # Get channels
             sliced_data = sz_clf_final[:,first_sz_idx_offset:]
             df = pd.DataFrame(sliced_data).T
-            seizing = df.rolling(window=5,closed='right').apply(lambda x: (x == 1).all())
-            first_sz_idxs = seizing.idxmax().to_numpy() - 4
+            seizing = df.rolling(window=10,closed='right').apply(lambda x: sum(x == 1)>8)
+
+            first_sz_idxs = seizing.idxmax().to_numpy() - 9
             seized_idxs = np.any(sliced_data,axis=1)
             first_sz_idxs += first_sz_idx_offset
             if sum(seized_idxs) > 0:

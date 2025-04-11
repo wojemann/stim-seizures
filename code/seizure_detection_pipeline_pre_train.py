@@ -400,7 +400,7 @@ def main():
     train_win = 12
     pred_win = 1
     # all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
-    all_mdl_strs = ['LSTM']
+    all_mdl_strs = ['AbsSlp','WVNT']
 
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
@@ -450,10 +450,10 @@ def main():
             target=128
             inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
 
+            # seizure_times = seizures_df[seizures_df.Patient == pt]
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-            # seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+            seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
-            seizure_times = seizures_df[seizures_df.Patient == pt]
 
             # Iterating through each seizure for that patient
             qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),leave=False)

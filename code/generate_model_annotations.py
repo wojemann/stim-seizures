@@ -64,7 +64,7 @@ def main():
             _,_, _, _, task, run = get_data_from_bids(ospj(datapath,"BIDS"),pt,str(int(sz_row.approximate_onset)),return_path=True, verbose=0)
             for mdl_str in mdl_strs:
                 clf_fs = 128
-                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
@@ -73,8 +73,9 @@ def main():
                 # scaler = RobustScaler()
                 # sz_prob = scaler.fit_transform(sz_prob.reshape(-1,1)).reshape(sz_prob.shape)
                 # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
-                if mdl_str == 'LSTM':
-                    sz_prob = sz_prob-np.min(sz_prob)
+                # if mdl_str == 'LSTM':
+                #     sz_prob = sz_prob-np.min(sz_prob)
+
                 # Match seizure using approximate onset time in annotations, patient name, and task
                 task_time = int(task[np.where([s.isnumeric() for s in task])[0][0]:])
                 approx_time = sz_row.approximate_onset
@@ -111,17 +112,20 @@ def main():
                     # prob_chs_reject = prob_chs[~late]
                     prob_chs_reject = prob_chs
                     # sz_clf_final = sz_prob > final_thresh
+                    sz_clf = sz_prob_reject > final_thresh
+                    sz_clf_final = sc.ndimage.median_filter(sz_clf,size=10,mode='nearest',axes=0,origin=0)
 
                     # Here this could be first seizing index, or it could be the time of the clinically defined UEO from the annotations
                     # first_seizing_index = np.argmax(sz_clf_final.any(axis=0))
 
-                    mdl_ueo_idx = np.all(sz_prob_reject[:,onset_index:onset_index+5] > final_thresh,axis=1)
+                    mdl_ueo_idx = np.all(sz_clf_final[:,onset_index:onset_index+5],axis=1)
                     mdl_ueo_ch_bp = prob_chs_reject[mdl_ueo_idx]
                     mdl_ueo_ch_strict = np.array([s.split("-")[0] for s in mdl_ueo_ch_bp]).flatten()
                     mdl_ueo_ch_loose = np.unique(np.array([s.split("-") for s in mdl_ueo_ch_bp]).flatten())
                     predicted_channels['ueo_chs_strict'].append(mdl_ueo_ch_strict)
                     predicted_channels['ueo_chs_loose'].append(mdl_ueo_ch_loose)
-                    mdl_sec_idx = np.all(sz_prob_reject[:,spread_index:spread_index+5] > final_thresh,axis=1)
+
+                    mdl_sec_idx = np.all(sz_clf_final[:,spread_index:spread_index+5],axis=1)
                     mdl_sec_ch_bp = prob_chs_reject[mdl_sec_idx]
                     mdl_sec_ch_strict = np.array([s.split("-")[0] for s in mdl_sec_ch_bp]).flatten()
                     mdl_sec_ch_loose = np.unique(np.array([s.split("-") for s in mdl_sec_ch_bp]).flatten())
@@ -129,7 +133,7 @@ def main():
                     predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels_norsc_v2.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"pretrain_predicted_channels_norsc_v2_nosmooth.pkl"))
     # predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
 if __name__ == "__main__":
     main()
