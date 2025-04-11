@@ -326,7 +326,7 @@ def electrode_wrapper(pt,rid_hup,datapath):
         return electrode_localizations,electrode_regions
 
 # Train the model instance using provided data
-def train_model(model,dataloader,criterion,optimizer,num_epochs=100,ccheck=False):
+def train_model(model,dataloader,criterion,optimizer,num_epochs=10,ccheck=False):
         # Training loop
         tbar = tqdm(range(num_epochs),leave=False)
         for e in tbar:
@@ -399,8 +399,8 @@ def main():
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
-    all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
-    # all_mdl_strs = ['LTI']
+    # all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
+    all_mdl_strs = ['LSTM']
 
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
@@ -486,7 +486,7 @@ def main():
                 seizure_pre = seizure_pre.loc[:,noisy_channel_mask]
 
                 # Perform overwrite check
-                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
@@ -558,7 +558,9 @@ def main():
                     time_wins = model.get_times(seizure_pre)
 
                 # Creating probabilities by temporally smoothing classification
-                sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
+                # Removing the smoothing from the saving step.
+                # sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
+                sz_prob = mdl_outs
                 sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure_pre.columns)
                 time_df = pd.Series(time_wins,name='time')
                 sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)
