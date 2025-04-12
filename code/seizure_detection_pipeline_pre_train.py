@@ -399,8 +399,9 @@ def main():
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
-    # all_mdl_strs = ['AbsSlp','LSTM','NRG','WVNT']
-    all_mdl_strs = ['AbsSlp','WVNT']
+    num_epochs = 100
+    # all_mdl_strs = ['AbsSlp','WVNT','LSTM']
+    all_mdl_strs = ['LSTM']
 
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
@@ -486,7 +487,7 @@ def main():
                 seizure_pre = seizure_pre.loc[:,noisy_channel_mask]
 
                 # Perform overwrite check
-                prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_nosmooth_nepochs-{num_epochs}_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
@@ -526,7 +527,7 @@ def main():
                     optimizer = optim.Adam(model.parameters(), lr=0.01)
 
                     # Train the model, this will just modify the model object, no returns
-                    train_model(model,dataloader,criterion,optimizer,ccheck=ccheck)
+                    train_model(model,dataloader,criterion,optimizer,ccheck=ccheck,num_epochs=num_epochs)
                     
                     ################################################
                     seizure_z = model.scaler_transform(seizure_pre)
