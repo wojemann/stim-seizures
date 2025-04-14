@@ -36,7 +36,7 @@ def main():
     montage = 'bipolar'
     mdl_strs = ['LSTM','AbsSlp','WVNT']
     # Iterating through each patient that we have annotations for
-    for epochs in [100]:
+    for epochs in [10]:
         for demin in [True,False]:
             for movtype in ['med','mean']:
                 for movwin in [10,20]:

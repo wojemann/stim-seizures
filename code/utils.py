@@ -33,6 +33,7 @@ import logging
 import warnings
 import random
 import json
+from joblib import Parallel, delayed
 
 # data IO imports
 import mne_bids
@@ -1530,4 +1531,16 @@ def load_config(config_path,flag='HUP'):
     rid_hup = pd.read_csv(ospj(metapath,'rid_hup.csv'))
     pt_list = patient_table.ptID.to_numpy()
     return usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
-# %%
+
+########################### OS Utils ###########################
+
+def in_parallel(func, data, verbose=False, n_jobs = -1):
+    if n_jobs < 1:
+        threads = os.cpu_count()
+    else:
+        threads = n_jobs
+
+    if verbose:
+        print(f"Processing {len(data)} items in parallel using {threads} threads")
+
+    return Parallel(n_jobs=threads)(delayed(func)(item) for item in data)

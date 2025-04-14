@@ -106,26 +106,32 @@ annotations_df.columns = ['Patient' if c == 'patient' else c for c in annotation
 annotations_df.sort_values('approximate_onset',inplace=True)
 
 # Loading in predicted channels for all models from generate_model_annotations.py
-for epochs in [100]:
+params = []
+for epochs in [10,100]:
     for demin in [True,False]:
         for movtype in ['med','mean']:
             for movwin in [10,20]:
-                for movdata in ['prob','clf']:
-                    predicted_channels = pd.read_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
-                    predicted_channels = predicted_channels[predicted_channels.to_annotate == 1]
+                for movdata in ['clf']:
+                    params.append((epochs,demin,movtype,movwin,movdata))
+def threshold_merge(params):
+    print(f'Starting: {params}')
+    epochs,demin,movtype,movwin,movdata = params
+    predicted_channels = pd.read_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
+    predicted_channels = predicted_channels[predicted_channels.to_annotate == 1]
 
-                    predicted_channels.sort_values('approximate_onset',inplace=True)
+    predicted_channels.sort_values('approximate_onset',inplace=True)
 
-                    # Creating a merged table with human and machine annotations based on approximate seizure onset time
-                    pred_channels_wannots = pd.merge_asof(predicted_channels,
-                                                        annotations_df[['approximate_onset','Patient','all_chs','ueo_consensus','ueo_any','sec_consensus','sec_any']],
-                                                        on='approximate_onset',by='Patient',
-                                                        tolerance = 240,
-                                                        direction='nearest')
+    # Creating a merged table with human and machine annotations based on approximate seizure onset time
+    pred_channels_wannots = pd.merge_asof(predicted_channels,
+                                        annotations_df[['approximate_onset','Patient','all_chs','ueo_consensus','ueo_any','sec_consensus','sec_any']],
+                                        on='approximate_onset',by='Patient',
+                                        tolerance = 240,
+                                        direction='nearest')
 
-                    pred_channels_wannots.dropna(axis=0,subset='ueo_consensus',inplace=True)
-                    pred_channels_wannots.sort_values(['Patient','iEEG_ID','approximate_onset'],inplace=True)
-                    pred_channels_wmcc = pred_channels_wannots.apply(apply_mcc,axis=1)
+    pred_channels_wannots.dropna(axis=0,subset='ueo_consensus',inplace=True)
+    pred_channels_wannots.sort_values(['Patient','iEEG_ID','approximate_onset'],inplace=True)
+    pred_channels_wmcc = pred_channels_wannots.apply(apply_mcc,axis=1)
 
-                    pred_channels_wmcc.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_wmcc_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
-                    print('Iter Done')
+    pred_channels_wmcc.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_wmcc_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
+    print('Iter Done')
+_ = in_parallel(threshold_merge,params)

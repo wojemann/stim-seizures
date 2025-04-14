@@ -60,7 +60,8 @@ def main():
             # print(task)
             for mdl_str in mdl_strs:
                 clf_fs = 128
-                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+                # prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
@@ -88,10 +89,9 @@ def main():
                 # Find closest index to seizure offset time
                 offset_index = np.argmin(np.abs(time_wins - (np.max(time_wins)-offset_time)))
 
-
                 model = NDD(fs = 128)
                 threshold = model.get_gaussianx_threshold(sz_prob.iloc[:offset_index,:],noise_floor=threshold_str)
-                # threshold = 1.32
+
                 sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:],threshold=threshold)
                 sz_spread -= np.min(sz_spread.min())
 
@@ -121,6 +121,6 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp_valtuned.pkl"))
 if __name__ == "__main__":
     main()
