@@ -31,16 +31,17 @@ def main():
     _,_,datapath,prodatapath,metapath,_,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
-    annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
+    # annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
+    annotations_df = pd.read_pickle(ospj(prodatapath,"threshold_tuning_consensus_v2.pkl"))
 
     montage = 'bipolar'
     mdl_strs = ['LSTM','AbsSlp','WVNT']
     # Iterating through each patient that we have annotations for
     for epochs in [10]:
-        for demin in [True,False]:
-            for movtype in ['med','mean']:
-                for movwin in [10,20]:
-                    for movdata in ['prob','clf']:
+        for demin in [False]:
+            for movtype in ['mean']:
+                for movwin in [20]:
+                    for movdata in ['prob']:
                         print(demin,movtype,movwin,movdata)
                         predicted_channels = {'Patient': [],
                             'iEEG_ID': [],
@@ -158,7 +159,7 @@ def main():
                                         predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
                         predicted_channels = pd.DataFrame(predicted_channels)
-                        predicted_channels.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
+                        predicted_channels.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_newpts.pkl"))
     # predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

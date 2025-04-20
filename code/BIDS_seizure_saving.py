@@ -66,6 +66,10 @@ def main():
         # sort by start time
         group = group.sort_values(["IEEGID","approximate_onset"])
         group.reset_index(inplace=True, drop=True)
+
+        if pt != 'HUP275':
+            continue
+        
         for idx, row in tqdm(
             group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
         ):

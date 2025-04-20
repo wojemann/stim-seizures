@@ -647,6 +647,45 @@ def get_data_from_bids(root,subject,task_key,run=None,return_path=False,verbose=
     return data_df.drop('time',axis=1), int(fs)
 
 ################################################ Plotting and Visualization ################################################
+def shade_y_ticks_background(ax, y_ticks, colors, alpha=1):
+    """
+    Shades the background of a plot along the y-axis based on specified y-ticks and colors.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The axis object to modify.
+        y_ticks (list or array): The y-tick values.
+        colors (list or array): A list of colors corresponding to each y-tick. Use None for no shading.
+    """
+    if isinstance(colors,str):
+        colors = [colors]*len(y_ticks)
+    if len(y_ticks) != len(colors):
+        raise ValueError("The length of y_ticks and colors must be the same.")
+
+    # Sort y_ticks and colors together to ensure proper ordering
+    sorted_indices = np.argsort(y_ticks)
+    y_ticks = np.array(y_ticks)[sorted_indices]
+    colors = np.array(colors)[sorted_indices]
+
+    # Add shading between each pair of y-ticks
+    for i in range(len(y_ticks)):
+        if colors[i] is not None:
+            if i == 0:
+                # First tick: shade from this tick down to halfway to the next tick
+                lower_bound = y_ticks[i] - (y_ticks[i + 1] - y_ticks[i]) / 2
+            else:
+                # Shade from halfway between this tick and the previous one
+                lower_bound = (y_ticks[i - 1] + y_ticks[i]) / 2
+
+            if i == len(y_ticks) - 1:
+                # Last tick: shade up to halfway to the previous tick
+                upper_bound = y_ticks[i] + (y_ticks[i] - y_ticks[i - 1]) / 2
+            else:
+                # Shade up to halfway between this tick and the next one
+                upper_bound = (y_ticks[i] + y_ticks[i + 1]) / 2
+
+            # Add a colored rectangle spanning the full x-axis width, avoiding overlap
+            ax.axhspan(lower_bound, upper_bound, color=colors[i], alpha=alpha, linewidth=0)
+
 def plot_iEEG_data(
     data,#: Union[pd.DataFrame, np.ndarray], 
     fs=None,

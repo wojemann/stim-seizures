@@ -60,11 +60,13 @@ def main():
             # print(task)
             for mdl_str in mdl_strs:
                 clf_fs = 128
-                prob_path = f"pretrain_probability_matrix_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{clf_fs}_montage-{montage}_task-{task}_run-{run}.pkl"
                 sz_prob = pd.read_pickle(ospj(prodatapath,pt,prob_path))
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
                 prob_chs = sz_prob.columns.to_numpy()
+
+                sz_prob = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=0,origin=0),columns=prob_chs)
 
                 # Match seizure using approximate onset time in annotations, patient name, and task
                 task_time = int(task[np.where([s.isnumeric() for s in task])[0][0]:])
@@ -103,7 +105,7 @@ def main():
                     df_dict_list.append(temp_dict)
 
     predicted_channels = pd.DataFrame(df_dict_list)
-    predicted_channels.to_pickle(ospj(prodatapath,"NDD_soz_localizations.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"NDD_soz_localizations_nosmooth.pkl"))
 
 if __name__ == "__main__":
     main()

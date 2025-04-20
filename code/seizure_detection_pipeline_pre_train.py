@@ -399,9 +399,9 @@ def main():
     montage = 'bipolar'
     train_win = 12
     pred_win = 1
-    num_epochs = 100
-    # all_mdl_strs = ['AbsSlp','WVNT','LSTM']
-    all_mdl_strs = ['LSTM']
+    num_epochs = 10
+    all_mdl_strs = ['AbsSlp','WVNT','LSTM']
+    # all_mdl_strs = ['LSTM']
 
     if 'WVNT' in all_mdl_strs:
         wave_model = load_model(ospj(prodatapath,'WaveNet','v111.hdf5'))
@@ -411,9 +411,6 @@ def main():
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
-
-        # if pt not in ['HUP238']:
-        #     continue
        
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
@@ -451,9 +448,9 @@ def main():
             target=128
             inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
 
-            # seizure_times = seizures_df[seizures_df.Patient == pt]
+            seizure_times = seizures_df[seizures_df.Patient == pt]
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
-            seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
+            # seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
 
             # Iterating through each seizure for that patient
@@ -487,7 +484,7 @@ def main():
                 seizure_pre = seizure_pre.loc[:,noisy_channel_mask]
 
                 # Perform overwrite check
-                prob_path = f"pretrain_probability_matrix_nosmooth_nepochs-{num_epochs}_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
+                prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
                 
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue

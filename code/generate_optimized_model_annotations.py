@@ -27,7 +27,7 @@ def main():
     mdl_str = 'LSTM'
     clf_fs = 128
     onset_time = 120
-    tuned_thresholds = pd.read_pickle(ospj(prodatapath,"patient_tuned_classification_thresholds.pkl"))
+    tuned_thresholds = pd.read_pickle(ospj(prodatapath,"patient_tuned_classification_thresholds_stim.pkl"))
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
@@ -48,10 +48,18 @@ def main():
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     for _,row in pbar:
         pt = row.ptID
+        # if pt != 'CHOP041':
+        #     continue
         pbar.set_description(desc=f"Patient -- {pt}",refresh=True)
         if (len(row.interictal_training) == 0) or (pt not in tuned_thresholds.Patient.to_numpy()):
             continue
-        pt_thresh = tuned_thresholds[(tuned_thresholds.Patient == pt) & (tuned_thresholds.model == mdl_str)]['threshold'].item()
+
+        pt_thresh = tuned_thresholds[(tuned_thresholds.Patient == pt) & (tuned_thresholds.model == mdl_str)]
+        if 0 not in pt_thresh.stim.values:
+            thresholds = [1.6060201480762224, pt_thresh.threshold.item()]
+        else:
+            thresholds = pt_thresh.sort_values('stim').threshold.to_list()
+        thresholds[0] = 1.6060201480762224
         seizure_times = seizures_df[seizures_df.Patient == pt]
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
 
@@ -65,7 +73,10 @@ def main():
             sz_prob.drop('time',axis=1,inplace=True)
             prob_chs = sz_prob.columns.to_numpy()
             sz_prob = sz_prob.to_numpy().T
-            
+
+            sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
+
+            threshold = thresholds[int(sz_row.stim)]
             # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
             # sz_prob = sz_prob-np.min(sz_prob)
 
@@ -76,11 +87,11 @@ def main():
             predicted_channels['stim'].append(sz_row.stim)
             predicted_channels['approximate_onset'].append(sz_row.approximate_onset)
             predicted_channels['offset'].append(sz_row.end)
-            predicted_channels['threshold'].append(pt_thresh)
+            predicted_channels['threshold'].append(threshold)
             predicted_channels['all_channels'].append(np.array([s.split("-")[0] for s in prob_chs]).flatten())
             
-            sz_clf = sz_prob > pt_thresh
-            sz_clf_final = sc.ndimage.median_filter(sz_clf,size=10,mode='nearest',axes=0,origin=0)
+            sz_clf_final = sz_prob > threshold
+            # sz_clf_final = sc.ndimage.median_filter(sz_clf,size=10,mode='nearest',axes=0,origin=0)
 
             first_sz_idx_offset = np.argmin(np.abs(time_wins-onset_time))
             
@@ -108,14 +119,14 @@ def main():
             new_onset_time = time_wins[onset_index]
             spread_index = np.argmin(np.abs(time_wins-(new_onset_time + 10)))
 
-            mdl_ueo_idx = np.sum(sz_prob[:,onset_index:onset_index+10] > pt_thresh,axis=1) > 6
+            mdl_ueo_idx = np.sum(sz_clf_final[:,onset_index:onset_index+10],axis=1) > 8
             mdl_ueo_ch_bp = prob_chs[mdl_ueo_idx]
             mdl_ueo_ch_strict = np.array([s.split("-")[0] for s in mdl_ueo_ch_bp]).flatten()
             mdl_ueo_ch_loose = np.unique(np.array([s.split("-") for s in mdl_ueo_ch_bp]).flatten())
             predicted_channels['ueo_chs_strict'].append(mdl_ueo_ch_strict)
             predicted_channels['ueo_chs_loose'].append(mdl_ueo_ch_loose)
 
-            mdl_sec_idx = np.sum(sz_prob[:,spread_index:spread_index+10] > pt_thresh,axis=1) > 6
+            mdl_sec_idx = np.sum(sz_clf_final[:,spread_index:spread_index+10],axis=1) > 8
             mdl_sec_ch_bp = prob_chs[mdl_sec_idx]
             mdl_sec_ch_strict = np.array([s.split("-")[0] for s in mdl_sec_ch_bp]).flatten()
             mdl_sec_ch_loose = np.unique(np.array([s.split("-") for s in mdl_sec_ch_bp]).flatten())
@@ -123,7 +134,7 @@ def main():
             predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    # predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v1.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v3.pkl"))
     # predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

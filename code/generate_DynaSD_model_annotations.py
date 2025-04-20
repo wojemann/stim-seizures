@@ -66,7 +66,9 @@ def main():
                 time_wins = sz_prob.time.to_numpy()
                 sz_prob.drop('time',axis=1,inplace=True)
                 prob_chs = sz_prob.columns.to_numpy()
-                
+
+                sz_prob = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=0,origin=0),columns=prob_chs)
+
                 # Match seizure using approximate onset time in annotations, patient name, and task
                 task_time = int(task[np.where([s.isnumeric() for s in task])[0][0]:])
                 approx_time = sz_row.approximate_onset
@@ -91,8 +93,21 @@ def main():
 
                 model = NDD(fs = 128)
                 threshold = model.get_gaussianx_threshold(sz_prob.iloc[:offset_index,:],noise_floor=threshold_str)
+                if task_time == 89820:
+                    sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:],
+                    threshold=threshold,
+                    filter_w=5,
+                    rwin_size=5,
+                    rwin_req=4,)
+                else:
+                    sz_spread = model.get_onset_and_spread(
+                        sz_prob.iloc[onset_index:offset_index,:],
+                        threshold=threshold,
+                        filter_w=10,
+                        rwin_size=5,
+                        rwin_req=4,
+                        )
 
-                sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:],threshold=threshold)
                 sz_spread -= np.min(sz_spread.min())
 
                 predicted_channels['Patient'].append(sz_row.Patient)
@@ -121,6 +136,6 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp_valtuned.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp_valtuned_v2.pkl"))
 if __name__ == "__main__":
     main()

@@ -101,17 +101,17 @@ usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 
 
 # Loading in human annotations with consensus annotation already created
-annotations_df = pd.read_pickle(ospj(prodatapath,"threshold_tuning_consensus.pkl"))
+annotations_df = pd.read_pickle(ospj(prodatapath,"threshold_tuning_consensus_v2.pkl"))
 annotations_df.columns = ['Patient' if c == 'patient' else c for c in annotations_df.columns]
 annotations_df.sort_values('approximate_onset',inplace=True)
 
 # Loading in predicted channels for all models from generate_model_annotations.py
 params = []
-for epochs in [10,100]:
-    for demin in [True,False]:
-        for movtype in ['med','mean']:
-            for movwin in [10,20]:
-                for movdata in ['clf']:
+for epochs in [10]:
+    for demin in [False]:
+        for movtype in ['mean']:
+            for movwin in [20]:
+                for movdata in ['prob']:
                     params.append((epochs,demin,movtype,movwin,movdata))
 def threshold_merge(params):
     print(f'Starting: {params}')
@@ -127,11 +127,11 @@ def threshold_merge(params):
                                         on='approximate_onset',by='Patient',
                                         tolerance = 240,
                                         direction='nearest')
-
+    print(pred_channels_wannots.Patient.unique())
     pred_channels_wannots.dropna(axis=0,subset='ueo_consensus',inplace=True)
     pred_channels_wannots.sort_values(['Patient','iEEG_ID','approximate_onset'],inplace=True)
     pred_channels_wmcc = pred_channels_wannots.apply(apply_mcc,axis=1)
 
-    pred_channels_wmcc.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_wmcc_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
+    pred_channels_wmcc.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_wmcc_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_v2.pkl"))
     print('Iter Done')
 _ = in_parallel(threshold_merge,params)
