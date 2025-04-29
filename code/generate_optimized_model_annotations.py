@@ -59,7 +59,7 @@ def main():
             thresholds = [1.6060201480762224, pt_thresh.threshold.item()]
         else:
             thresholds = pt_thresh.sort_values('stim').threshold.to_list()
-        thresholds[0] = 1.6060201480762224
+        # thresholds[0] = 1.6060201480762224
         seizure_times = seizures_df[seizures_df.Patient == pt]
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
 
@@ -74,8 +74,8 @@ def main():
             prob_chs = sz_prob.columns.to_numpy()
             sz_prob = sz_prob.to_numpy().T
 
-            sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
-
+            # sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
+            sz_prob = sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=1,origin=0)
             threshold = thresholds[int(sz_row.stim)]
             # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
             # sz_prob = sz_prob-np.min(sz_prob)
@@ -134,7 +134,7 @@ def main():
             predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v3.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v2_mean.pkl"))
     # predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

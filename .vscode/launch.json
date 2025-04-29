@@ -12,7 +12,9 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "debugServer": 4711
+            "debugServer": 4711,
+            "env": {"PYDEVD_WARN_SLOW_RESOLVE_TIMEOUT": "2"}
+
         }
     ]
 }
