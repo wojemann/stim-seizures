@@ -27,7 +27,6 @@ def main():
     mdl_str = 'LSTM'
     clf_fs = 128
     onset_time = 120
-    tuned_thresholds = pd.read_pickle(ospj(prodatapath,"patient_tuned_classification_thresholds_stim.pkl"))
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
@@ -45,7 +44,14 @@ def main():
                         'all_channels': []
                         }
     
+    smooth = 'med'
+    pt_comb = 'mean'
+    sz_comb = 'mean'
+    v=3
+    tuned_thresholds = pd.read_pickle(ospj(prodatapath,f"patient_tuned_classification_thresholds_stim_sz-{sz_comb}.pkl"))
+
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
+    
     for _,row in pbar:
         pt = row.ptID
         # if pt != 'CHOP041':
@@ -56,10 +62,17 @@ def main():
 
         pt_thresh = tuned_thresholds[(tuned_thresholds.Patient == pt) & (tuned_thresholds.model == mdl_str)]
         if 0 not in pt_thresh.stim.values:
-            thresholds = [1.6060201480762224, pt_thresh.threshold.item()]
+            if sz_comb == 'mean':
+                thresholds = [1.6060201480762224, pt_thresh.threshold.item()]
+            else:
+                thresholds = [1.6900109236557836, pt_thresh.threshold.item()]
         else:
             thresholds = pt_thresh.sort_values('stim').threshold.to_list()
-        # thresholds[0] = 1.6060201480762224
+        if v==3:
+            if sz_comb == 'mean':
+                thresholds[0] = 1.6060201480762224
+            else:
+                thresholds[0] = 1.6900109236557836
         seizure_times = seizures_df[seizures_df.Patient == pt]
         qbar = tqdm(seizure_times.iterrows(),total=len(seizure_times),desc = 'Seizures',leave=False)
 
@@ -74,8 +87,8 @@ def main():
             prob_chs = sz_prob.columns.to_numpy()
             sz_prob = sz_prob.to_numpy().T
 
-            # sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
-            sz_prob = sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=1,origin=0)
+            sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
+            # sz_prob = sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=1,origin=0)
             threshold = thresholds[int(sz_row.stim)]
             # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
             # sz_prob = sz_prob-np.min(sz_prob)
@@ -134,7 +147,7 @@ def main():
             predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v2_mean.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v{v}_sz-{sz_comb}_pt-{pt_comb}_smooth-{smooth}.pkl"))
     # predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()
