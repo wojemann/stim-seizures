@@ -60,10 +60,7 @@ def main():
         pt_comb=params['pt_comb']
         sz_comb=params['sz_comb']
         v=params['v']
-        # smooth = 'med'
-        # pt_comb = 'mean'
-        # sz_comb = 'mean'
-        # v=3
+
         tuned_thresholds = pd.read_pickle(ospj(prodatapath,f"patient_tuned_classification_thresholds_stim_sz-{sz_comb}.pkl"))
 
         pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
@@ -102,12 +99,12 @@ def main():
                 sz_prob.drop('time',axis=1,inplace=True)
                 prob_chs = sz_prob.columns.to_numpy()
                 sz_prob = sz_prob.to_numpy().T
+                if smooth == 'med':
+                    sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
+                else:
+                    sz_prob = sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=1,origin=0)
 
-                sz_prob = sc.ndimage.median_filter(sz_prob,size=20,mode='nearest',axes=1,origin=0)
-                # sz_prob = sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=1,origin=0)
                 threshold = thresholds[int(sz_row.stim)]
-                # sz_prob = (sz_prob - np.min(sz_prob))/np.max(sz_prob)
-                # sz_prob = sz_prob-np.min(sz_prob)
 
                 # Generate predicitons
                 predicted_channels['Patient'].append(sz_row.Patient)
@@ -120,7 +117,6 @@ def main():
                 predicted_channels['all_channels'].append(np.array([s.split("-")[0] for s in prob_chs]).flatten())
                 
                 sz_clf_final = sz_prob > threshold
-                # sz_clf_final = sc.ndimage.median_filter(sz_clf,size=10,mode='nearest',axes=0,origin=0)
 
                 first_sz_idx_offset = np.argmin(np.abs(time_wins-onset_time))
                 
