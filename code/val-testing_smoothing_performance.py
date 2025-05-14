@@ -40,7 +40,7 @@ plt.rcParams['font.family'] = 'Verdana'
 usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/sauce/littlab/users/wojemann/stim-seizures/code','config.json'))
 
 ### Loading in clinician annotations
-consensus_annots = pd.read_pickle(ospj(prodatapath,'threshold_tuning_consensus.pkl'))
+consensus_annots = pd.read_pickle(ospj(prodatapath,'threshold_tuning_consensus_v2.pkl'))
 consensus_annots.loc[consensus_annots.Seizure_ID == 'HUP249_3','stim'] = 1.0
 consensus_annots = consensus_annots[consensus_annots.patient != 'CHOP038']
 

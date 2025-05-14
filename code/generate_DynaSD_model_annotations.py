@@ -21,11 +21,13 @@ def main():
     _,_,datapath,prodatapath,metapath,_,patient_table,_,_ = load_config(ospj('/mnt/sauce/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
-    annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
+    # annotations_df = pd.read_pickle(ospj(prodatapath,"stim_seizure_information_consensus.pkl"))
+    annotations_df = pd.read_pickle(ospj(prodatapath,"threshold_tuning_consensus_v2.pkl"))
+
 
     montage = 'bipolar'
     threshold_str = 'automedian'
-    mdl_strs = ['LSTM']#,'AbsSlp','NRG','WVNT']
+    mdl_strs = ['LSTM']
     # Iterating through each patient that we have annotations for
     predicted_channels = {'Patient': [],
                         'iEEG_ID': [],
@@ -93,7 +95,8 @@ def main():
 
                 model = NDD(fs = 128)
                 threshold = model.get_gaussianx_threshold(sz_prob.iloc[:offset_index,:],noise_floor=threshold_str)
-                if task_time == 89820:
+                
+                if task_time == 89820: # This one seizure does not have sufficient duration to apply a 10 second moving median window.
                     sz_spread = model.get_onset_and_spread(sz_prob.iloc[onset_index:offset_index,:],
                     threshold=threshold,
                     filter_w=5,
