@@ -61,6 +61,7 @@ def main():
                             pt = row.ptID
                             pbar.set_description(desc=f"Patient -- {pt}",refresh=True)
                             if len(row.interictal_training) == 0:
+                                # Here is where we exclude CHOP010, CHOP015, and CHOP046
                                 continue
                             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
                             seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
