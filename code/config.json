@@ -206,11 +206,11 @@
     "hf_stim": 0,
     "interictal_training": []
     },
-    {"ptID": "CHOP010",
-    "ieeg_ids": ["CHOPCCEP_010","CHOP010a","CHOP010b","CHOP010c"],
+    {"ptID": "CHOP015",
+    "ieeg_ids": ["CHOPCCEP_015"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOPCCEP_015",75457]
     },
     {"ptID": "CHOP024",
     "ieeg_ids": ["CHOPCCEP_024","CHOP024"],
