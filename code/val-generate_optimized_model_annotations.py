@@ -29,16 +29,18 @@ def main():
     onset_time = 120
     funs = ['mean','med']
     param_list = []
+    # OPTIMAL: mean, mean, med
     for pt_comb in ['mean']:
-        for sz_comb in funs:
-            for smooth in funs:
-                for v in [2,3]:
+        for sz_comb in ['mean']:
+            for smooth in ['med']:
+                for v in [4]:#[2,3]:
                     param_list.append(dict(
                         smooth=smooth,
                         pt_comb=pt_comb,
                         sz_comb=sz_comb,
                         v=v
                     ))
+                    
     def par_fun(params):
         # Iterating through each patient that we have annotations for
         predicted_channels = {'Patient': [],
@@ -81,7 +83,7 @@ def main():
                     thresholds = [1.6900109236557836, pt_thresh.threshold.item()]
             else:
                 thresholds = pt_thresh.sort_values('stim').threshold.to_list()
-            if v==3:
+            if v>2:
                 if sz_comb == 'mean':
                     thresholds[0] = 1.6060201480762224
                 else:

@@ -136,6 +136,6 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
     predicted_channels = pd.DataFrame(predicted_channels)
-    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp_valtuned_v2.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,f"DynaSD_gaussianx_{threshold_str}_predicted_channels_norp_valtuned_v3.pkl"))
 if __name__ == "__main__":
     main()

@@ -105,7 +105,7 @@ def main():
                     df_dict_list.append(temp_dict)
 
     predicted_channels = pd.DataFrame(df_dict_list)
-    predicted_channels.to_pickle(ospj(prodatapath,"NDD_soz_localizations_nosmooth.pkl"))
+    predicted_channels.to_pickle(ospj(prodatapath,"NDD_soz_localizations_nosmooth_v2.pkl"))
 
 if __name__ == "__main__":
     main()

@@ -116,7 +116,7 @@ for epochs in [10]:
 def threshold_merge(params):
     print(f'Starting: {params}')
     epochs,demin,movtype,movwin,movdata = params
-    predicted_channels = pd.read_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}.pkl"))
+    predicted_channels = pd.read_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_newptsv2.pkl"))
     predicted_channels = predicted_channels[predicted_channels.to_annotate == 1]
 
     predicted_channels.sort_values('approximate_onset',inplace=True)
@@ -132,6 +132,6 @@ def threshold_merge(params):
     pred_channels_wannots.sort_values(['Patient','iEEG_ID','approximate_onset'],inplace=True)
     pred_channels_wmcc = pred_channels_wannots.apply(apply_mcc,axis=1)
 
-    pred_channels_wmcc.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_wmcc_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_v2.pkl"))
+    pred_channels_wmcc.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_wmcc_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_v3.pkl"))
     print('Iter Done')
 _ = in_parallel(threshold_merge,params)

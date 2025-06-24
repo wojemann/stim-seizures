@@ -37,6 +37,7 @@ def main():
     montage = 'bipolar'
     mdl_strs = ['LSTM','AbsSlp','WVNT']
     # Iterating through each patient that we have annotations for
+    # Optimal is 10 epochs, no demin, moving median with a window size of 20 applied to the probability matrices
     for epochs in [10]:
         for demin in [False]:
             for movtype in ['mean']:
@@ -160,7 +161,7 @@ def main():
                                         predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
                         predicted_channels = pd.DataFrame(predicted_channels)
-                        predicted_channels.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_newpts.pkl"))
+                        predicted_channels.to_pickle(ospj(prodatapath,f"pretrain_predicted_channels_epoch-{epochs}_min-{str(demin)}_mov-{movtype}-{str(movwin)}-{movdata}_newptsv2.pkl"))
     # predicted_channels.to_csv(ospj(prodatapath,"pretrain_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

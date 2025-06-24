@@ -411,7 +411,10 @@ def main():
     for _,row in pbar:
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
-       
+
+        if pt not in ['HUP275']:
+            continue
+        
         # Skipping if no training data has been identified
         if len(row.interictal_training) == 0:
             continue
@@ -429,11 +432,13 @@ def main():
                 suffix = ['CHOPR','CHOPM']
             else:
                 suffix = ['dkt','atropos']
+
             electrode_localizations.name = clean_labels(electrode_localizations.name,pt) #don't end up using grey/white matter
             electrode_regions.name = clean_labels(electrode_regions.name,pt)
             electrode_localizations.to_pickle(ospj(prodatapath,pt,f'electrode_localizations_{suffix[1]}.pkl')) #don't end up using grey/white matter
             electrode_regions.to_pickle(ospj(prodatapath,pt,f'electrode_localizations_{suffix[0]}.pkl'))
             neural_channels = electrode_localizations.name[(electrode_localizations.name.isin(inter_raw.columns)) & ((electrode_localizations.label == 'white matter') | (electrode_localizations.label == 'gray matter'))]
+        
         except:
             print(f"electrode localization failed for {pt}")
             neural_channels = chn_labels

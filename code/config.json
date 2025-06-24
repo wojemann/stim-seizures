@@ -204,7 +204,7 @@
     "ieeg_ids": ["CHOPCCEP_010","CHOP010a","CHOP010b","CHOP010c"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training": ["CHOP010a",10845.95]
     },
     {"ptID": "CHOP015",
     "ieeg_ids": ["CHOPCCEP_015"],
@@ -246,7 +246,7 @@
     "ieeg_ids": ["CHOPCCEP_038","CHOP038"],
     "lf_stim": 1,
     "hf_stim": 0,
-    "interictal_training": []
+    "interictal_training":[]
     },
     {"ptID": "CHOP041",
     "ieeg_ids": ["CHOPCCEP_041","CHOP041"],

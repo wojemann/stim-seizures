@@ -21,7 +21,7 @@ usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -67,7 +67,7 @@ def main():
         group = group.sort_values(["IEEGID","approximate_onset"])
         group.reset_index(inplace=True, drop=True)
 
-        if pt != 'HUP275':
+        if pt not in  ['HUP275']:
             continue
         
         for idx, row in tqdm(
@@ -78,6 +78,7 @@ def main():
             task_names = ['ictal','stim']
             onset = row.approximate_onset
             offset = row.end
+            
             # get bids path
             sz_clip_bids_path = bids_path.copy().update(
                 subject=pt,

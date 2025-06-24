@@ -50,7 +50,7 @@ def main():
         if len(row.interictal_training) == 0:
             continue
         pt = row.ptID
-        if pt != 'HUP275':
+        if pt not in  ['CHOP010','CHOP015']:
             continue
         ieeg_name = row.interictal_training[0]
         onset = row.interictal_training[1]

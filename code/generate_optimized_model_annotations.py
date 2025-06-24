@@ -47,8 +47,8 @@ def main():
     smooth = 'med'
     pt_comb = 'mean'
     sz_comb = 'mean'
-    v=3
-    tuned_thresholds = pd.read_pickle(ospj(prodatapath,f"patient_tuned_classification_thresholds_stim_sz-{sz_comb}.pkl"))
+    v = 4
+    tuned_thresholds = pd.read_pickle(ospj(prodatapath,f"patient_tuned_classification_thresholds_stim_sz-{sz_comb}_v2.pkl"))
 
     pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
     
@@ -63,14 +63,16 @@ def main():
         pt_thresh = tuned_thresholds[(tuned_thresholds.Patient == pt) & (tuned_thresholds.model == mdl_str)]
         if 0 not in pt_thresh.stim.values:
             if sz_comb == 'mean':
-                thresholds = [1.6060201480762224, pt_thresh.threshold.item()]
+                thresholds = [1.6322369219565476,#1.6060201480762224,
+                pt_thresh.threshold.item()]
             else:
-                thresholds = [1.6900109236557836, pt_thresh.threshold.item()]
+                thresholds = [1.6900109236557836, 
+                pt_thresh.threshold.item()]
         else:
             thresholds = pt_thresh.sort_values('stim').threshold.to_list()
-        if v==3:
+        if v>2:
             if sz_comb == 'mean':
-                thresholds[0] = 1.6060201480762224
+                thresholds[0] = 1.6322369219565476#1.6060201480762224
             else:
                 thresholds[0] = 1.6900109236557836
         seizure_times = seizures_df[seizures_df.Patient == pt]
