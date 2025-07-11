@@ -694,6 +694,7 @@ def plot_iEEG_data(
     colors=None,
     plot_color = 'k',
     shade_color = None,
+    shade_alpha = 0.3,
     empty=False,
     dr=None,
     fig_size=None,
@@ -778,7 +779,7 @@ def plot_iEEG_data(
     ax.plot(t, data + ticklocs, color=plot_color, lw=0.4)
 
     if shade_color is not None:    
-        shade_y_ticks_background(ax, ticklocs, shade_color, alpha=0.3)
+        shade_y_ticks_background(ax, ticklocs, shade_color, alpha=shade_alpha)
 
     if empty:
         for spine in ax.spines.values():
