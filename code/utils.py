@@ -580,6 +580,7 @@ def surgical_parcellation(electrode_regions):
                 surgical_label = 'right other neocortex'
         electrode_regions.loc[i,"label"] = surgical_label
     return electrode_regions
+    
 def surgical_parcelate(region_list):
     surgical_labels = []
     for label in region_list:
