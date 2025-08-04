@@ -22,7 +22,7 @@ cat("Fixed effects: Regression coefficients (Estimate), standard errors, Kenward
 model_typical <- lmer(MCC ~ typical + (1|patient), data = df, REML=FALSE)
 print(summary(model_typical))
 cat("Random effect variance: Variance attributed to the random intercept for patient, and residual variance.\n")
-print(VarCorr(model_typical),comp="Variance")
+# print(VarCorr(model_typical),comp="Variance")
 
 # 2. Typical vs. Typical x Center (KR LRT)
 cat("\n--- Typical vs. Typical x Center (KR LRT) ---\n")

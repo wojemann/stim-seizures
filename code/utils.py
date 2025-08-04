@@ -1556,6 +1556,25 @@ def set_seed(seed):
   random.seed(seed)
 
 def load_config(config_path,flag='HUP'):
+    plt.rcParams['image.cmap'] = 'magma'
+
+    plt.rcParams['xtick.labelsize'] = 14
+    plt.rcParams['ytick.labelsize'] = 14
+    plt.rcParams['axes.linewidth'] = 2
+    plt.rcParams['axes.titlesize'] = 16
+    plt.rcParams['axes.labelsize'] = 14
+    plt.rcParams['lines.linewidth'] = 2
+
+    plt.rcParams['xtick.major.size'] = 5  # Change to your desired major tick size
+    plt.rcParams['ytick.major.size'] = 5  # Change to your desired major tick size
+    plt.rcParams['xtick.minor.size'] = 3   # Change to your desired minor tick size
+    plt.rcParams['ytick.minor.size'] = 3   # Change to your desired minor tick size
+
+    plt.rcParams['xtick.major.width'] = 2  # Change to your desired major tick width
+    plt.rcParams['ytick.major.width'] = 2  # Change to your desired major tick width
+    plt.rcParams['xtick.minor.width'] = 1  # Change to your desired minor tick width
+    plt.rcParams['ytick.minor.width'] = 1  # Change to your desired minor tick width
+    
     with open(config_path,'r') as f:
         CONFIG = json.load(f)
     usr = CONFIG["paths"]["iEEG_USR"]
