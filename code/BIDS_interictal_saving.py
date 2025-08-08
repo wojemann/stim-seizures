@@ -20,7 +20,7 @@ usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -39,7 +39,7 @@ def main():
     }
 
     # Loading in all seizure data
-    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS_HF.csv"))
 
     for _,row in tqdm(
         patient_table.iterrows(),
@@ -50,8 +50,8 @@ def main():
         if len(row.interictal_training) == 0:
             continue
         pt = row.ptID
-        if pt not in  ['CHOP010','CHOP015']:
-            continue
+        # if pt not in  ['CHOP010','CHOP015']:
+        #     continue
         ieeg_name = row.interictal_training[0]
         onset = row.interictal_training[1]
         offset = onset + 60

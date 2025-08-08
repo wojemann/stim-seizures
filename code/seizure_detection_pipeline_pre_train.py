@@ -32,7 +32,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
-OVERWRITE = True
+OVERWRITE = False
 
 # Functions for data formatting in autoregressive problem
 # prepare_segment turns interictal/seizure clip into input and target data for autoregression
@@ -379,7 +379,7 @@ def plot_and_save_detection_figure(mat,win_times,yticks,fig_save_path,xlim = Non
     plt.yticks([])
     if xlim is not None:
         plt.xlim(xlim)
-    plt.clim([0,1])
+    plt.clim([0,4])
     plt.savefig(fig_save_path,bbox_inches='tight')
 
 def main():
@@ -393,7 +393,7 @@ def main():
     # Please run BIDS_seizure_saving.py and BIDS_interictal_saving.py to modify seizures for seizure detection.
     _,_,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
 
-    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS_HF.csv"))
 
     onset_time = 120
     montage = 'bipolar'
@@ -412,7 +412,8 @@ def main():
         pt = row.ptID
         pbar.set_description(desc=f"Patient: {pt}",refresh=True)
 
-        if pt not in ['HUP275']:
+        allowed_patients = ['HUP170','HUP172','HUP178','HUP180','HUP186','HUP188','HUP193','HUP194','HUP201','HUP202','HUP205','HUP210','HUP211','HUP213','HUP214','HUP218']
+        if pt not in allowed_patients:
             continue
         
         # Skipping if no training data has been identified
@@ -432,7 +433,8 @@ def main():
                 suffix = ['CHOPR','CHOPM']
             else:
                 suffix = ['dkt','atropos']
-
+                
+            os.makedirs(ospj(prodatapath,pt),exist_ok=True)
             electrode_localizations.name = clean_labels(electrode_localizations.name,pt) #don't end up using grey/white matter
             electrode_regions.name = clean_labels(electrode_regions.name,pt)
             electrode_localizations.to_pickle(ospj(prodatapath,pt,f'electrode_localizations_{suffix[1]}.pkl')) #don't end up using grey/white matter

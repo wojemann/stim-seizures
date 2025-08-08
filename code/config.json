@@ -277,6 +277,102 @@
     "lf_stim": 1,
     "hf_stim": 0,
     "interictal_training": ["CHOP049",8313.95]
+    },
+    {"ptID": "HUP170",
+    "ieeg_ids": ["HUP170_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP170_phaseII",330131.14]
+    },
+    {"ptID": "HUP172",
+    "ieeg_ids": ["HUP172_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP172_phaseII",678544.13]
+    },
+    {"ptID": "HUP178",
+    "ieeg_ids": ["HUP178_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP178_phaseII",609989.85]
+    },
+    {"ptID": "HUP180",
+    "ieeg_ids": ["HUP180_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP180_phaseII",516982.45]
+    },
+    {"ptID": "HUP186",
+    "ieeg_ids": ["HUP186_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP186_phaseII",449922.41]
+    },
+    {"ptID": "HUP188",
+    "ieeg_ids": ["HUP188_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP188_phaseII",418528.93]
+    },
+    {"ptID": "HUP193",
+    "ieeg_ids": ["HUP193_phaseII_D01","HUP193_phaseII_D02","HUP193_phaseII_D03"],
+    "lf_stim": 1,
+    "hf_stim": 1,
+    "interictal_training": ["HUP193_phaseII_D03",365737.09]
+    },
+    {"ptID": "HUP194",
+    "ieeg_ids": ["HUP194_phaseII_D01","HUP194_phaseII_D02","HUP194_phaseII_D03"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP194_phaseII_D01",15866.43]
+    },
+    {"ptID": "HUP201",
+    "ieeg_ids": ["HUP201_phaseII_D01","HUP201_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP201_phaseII_D02",543296.65]
+    },
+    {"ptID": "HUP202",
+    "ieeg_ids": ["HUP202_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP202_phaseII",671574.11]
+    },
+    {"ptID": "HUP205",
+    "ieeg_ids": ["HUP205_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP205_phaseII",588783.54]
+    },
+    {"ptID": "HUP210",
+    "ieeg_ids": ["HUP210_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP210_phaseII",772876.00]
+    },
+    {"ptID": "HUP211",
+    "ieeg_ids": ["HUP211_phaseII"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP211_phaseII",668434.44]
+    },
+    {"ptID": "HUP213",
+    "ieeg_ids": ["HUP213_phaseII_D01","HUP213_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP213_phaseII_D02",722360.56]
+    },
+    {"ptID": "HUP214",
+    "ieeg_ids": ["HUP214_phaseII_D01","HUP214_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP214_phaseII_D02",702302.24]
+    },
+    {"ptID": "HUP218",
+    "ieeg_ids": ["HUP218_phaseII_D01","HUP218_phaseII_D02"],
+    "lf_stim": 0,
+    "hf_stim": 1,
+    "interictal_training": ["HUP218_phaseII_D02",197655.66]
     }
 ]
 }

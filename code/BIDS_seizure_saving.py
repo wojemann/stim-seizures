@@ -21,7 +21,7 @@ usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 512
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -40,16 +40,16 @@ def main():
     }
 
     # Loading in all seizure data
-    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information - LF_seizure_annotation.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information - HF_seizure_annotation.csv"))
     seizures_df.dropna(axis=0,how='all',inplace=True)
     seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)
     seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)
     seizures_df['approximate_onset'].fillna(seizures_df['Other_onset_description'],inplace=True)
     # drop HF stim induced seizures
-    seizures_df = seizures_df[seizures_df.stim != 2]
+    # seizures_df = seizures_df[seizures_df.stim != 2]
     # adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
     # seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
-    seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
+    # seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
     bad_ch_dict = dict()
     buffer = 120 # seconds before and after seizure to save
     for pt, group in tqdm(
@@ -58,6 +58,7 @@ def main():
         desc="Patients",
         position=0,
     ):
+        print(pt)
         bad_ch_dict[pt] = set()
         ieegid = group.groupby('IEEGname').ngroup().astype(int)
         seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
@@ -67,15 +68,17 @@ def main():
         group = group.sort_values(["IEEGID","approximate_onset"])
         group.reset_index(inplace=True, drop=True)
 
-        if pt not in  ['HUP275']:
+        # if pt not in  ['HUP275']:
+        #     continue
+        if pt not in ['HUP205','HUP210','HUP211','HUP213','HUP214','HUP218']:
             continue
         
-        for idx, row in tqdm(
+        for _, row in tqdm(
             group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
         ):
-            if row.stim == 2: # Skip high frequency induced seizures
-                continue
-            task_names = ['ictal','stim']
+            # if row.stim == 2: # Skip high frequency induced seizures
+            #     continue
+            task_names = ['ictal','stim','stim']
             onset = row.approximate_onset
             offset = row.end
             
@@ -171,7 +174,7 @@ def main():
                     allow_preload=True,
                     format="EDF",
                 )
-    seizures_df.to_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df.to_csv(ospj(metapath,"stim_seizure_information_BIDS_HF.csv"))
     # Save to a JSON file
     with open(ospj(metapath,'bad_ch_dict.pkl'), 'wb') as f:
         pickle.dump(bad_ch_dict, f)
