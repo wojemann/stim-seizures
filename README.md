@@ -13,6 +13,15 @@ Analyzing the relationsihp between low-frequency electrical stimulation induced 
 ## Data
 all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data.
 
+The following checkpoint files are provided in the pennsieve dataset and can be used to generate all main text and supplementary figures.
+* stim_seizure_information - LF_seizure_annotation.csv
+* stim_seizure_information_BIDS.csv
+* stim_seizure_information - metadata-4.csv
+* CHOP_metadata.csv
+* threshold_tuning_consensus_v2.pkl
+* pretrain_predicted_channels_wmcc_epoch-10_min-False_mov-mean-20-prob_v3.pkl
+* optimized_predicted_channels_LSTM_tuned_thresholds_v4_sz-mean_pt-mean_smooth-med.pkl
+
 ## Analysis pipeline
 Steps to replicate:
 * Config file
