@@ -454,6 +454,7 @@ def main():
             inter_pre, fs, mask = preprocess_for_detection(inter_neural,fs_raw,montage,target=target,wavenet=wvcheck,pre_mask = None)
 
             seizure_times = seizures_df[seizures_df.Patient == pt]
+            
             ### ONLY PREDICTING FOR SEIZURES THAT HAVE BEEN ANNOTATED
             # seizure_times = seizures_df[(seizures_df.Patient == pt) & (seizures_df.to_annotate == 1)]
             ###
@@ -490,15 +491,15 @@ def main():
 
                 # Perform overwrite check
                 prob_path = f"pretrain_probability_matrix_nosmooth_mdl-{mdl_str}_fs-{int(fs)}_montage-{montage}_task-{task}_run-{run}.pkl"
-                
                 if (not OVERWRITE) and ospe(ospj(prodatapath,pt,prob_path)):
                     continue
+
                 if sz_row.stim == 1:    
                     sz_train = inter_pre.loc[:,seizure_pre.columns]
                 else:
                     sz_train = seizure_pre.loc[:fs*60,:]
 
-                if mdl_str in ['LSTM','LSTMX']:
+                if mdl_str in ['LSTM']:
                     ##############################
                     input_size = sz_train.shape[1]
                     hidden_size = 10
@@ -507,8 +508,6 @@ def main():
                     # Initialize the model
                     if mdl_str == 'LSTM':
                         model = LSTMModel(input_size, hidden_size)
-                    elif mdl_str == 'LSTMX':
-                        model = LSTMX(input_size,hidden_size)
                     if ccheck:
                         model.cuda()
 
@@ -544,26 +543,18 @@ def main():
                     mdl_outs = raw_sz_vals
                     ###
                 
-                elif mdl_str in ['NRG','AbsSlp','WVNT','LTI']:
+                elif mdl_str in ['AbsSlp','WVNT']:
                     if mdl_str == 'AbsSlp':
                         model = AbsSlope(1,.5, fs)
-                        model.fit(sz_train)
-                    elif mdl_str == 'NRG':
-                        model = NRG(1,.5,fs)
                         model.fit(sz_train)
                     elif mdl_str == 'WVNT':
                         model = WVNT(wave_model,1,.5,fs)
                         model.fit(sz_train)
-                    elif mdl_str == 'LTI':
-                        model = LTI(1,.5,fs)
-                        model.fit(sz_train)
                     mdl_outs = model(seizure_pre)
                     time_wins = model.get_times(seizure_pre)
 
-                # Creating probabilities by temporally smoothing classification
                 # Removing the smoothing from the saving step.
-                # sz_prob = sc.ndimage.uniform_filter1d(mdl_outs,20,axis=1,mode='constant')
-                sz_prob = mdl_outs
+                sz_prob = mdl_outs.copy()
                 sz_prob_df = pd.DataFrame(sz_prob.T,columns = seizure_pre.columns)
                 time_df = pd.Series(time_wins,name='time')
                 sz_prob_df = pd.concat((sz_prob_df,time_df),axis=1)
@@ -571,8 +562,6 @@ def main():
                 sz_prob_df.to_pickle(ospj(prodatapath,pt,prob_path))
                 
                 ### Visualization
-                # np.save(ospj(prodatapath,pt,prob_path),sz_prob)
-                # np.save(ospj(prodatapath,pt,f"raw_preds_mdl-{model}_fs-{fs}_montage-{montage}_task-{task}_run-{run}.npy"),sz_clf)
                 detect_idx = np.argwhere(np.ceil(time_wins)==120)[0]
                 first_detect = np.argmax(sz_prob[:,int(detect_idx):]>.5,axis=1)
                 first_detect[first_detect == 0] = sz_prob.shape[1]
