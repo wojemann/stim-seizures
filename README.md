@@ -1,14 +1,14 @@
 # stim-seizures
 Analyzing the relationsihp between low-frequency electrical stimulation induced seizure and spontaneous seizure networks.
 
-## Can electrical stimulation replace spontaneous seizures?
-### authors
-### affiliations
+## ⚡️ Can electrical stimulation replace spontaneous seizures?
+### 👨‍🍳 Authors
+### 🏦 Affiliations
 
-### Preprint: will be made available upon preprint!
-### Manuscript: will be made available upon publication!
+### 🧪 Preprint: will be made available upon preprint!
+### 🔬 Manuscript: will be made available upon publication!
 
-## Prerequisites/Dependencies
+## 🤖 Prerequisites/Dependencies
 - **OS**: Linux (tested). macOS should work; Windows is untested.
 - **Python (stim-env)**: Python 3.10.x (tested with 3.10.16). Saved artifacts use pickle protocol 5, so use Python ≥3.8 (3.10 recommended) to ensure compatibility.
 - **Environment setup**:
@@ -42,13 +42,9 @@ Analyzing the relationsihp between low-frequency electrical stimulation induced 
   ```r
   install.packages(c("lme4","lmerTest","pbkrtest","dplyr","ggplot2","emmeans","multcomp","car","nlme"))
   ```
-
-## Data
-all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data.
-
-## Analysis pipeline
-Steps to replicate:
-* Config file
+- Download data checkpoints
+- Update config.json
+    Config file
     There is an example config file with the required fields. you need to fill out the following paths:
     * RAW_DATA
     directory where the raw EEG recordings will be saved in iEEG-BIDS format
@@ -68,6 +64,11 @@ Steps to replicate:
         list of ieeg.org file ids associated with EEG recordings from that patient
         * interictal_training
         2 element list containing the ieeg_id and start time in that file (seconds) for the sample interictal time window (1 minute) to use as a baseline for stim seizure annotation
+          
+## Data
+all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data.
+
+## Analysis pipeline
 * annotation_analysis_and_consensys.ipynb
 notebook to generate consensus thresholds and perform seizure similarity analysis (Figure SX). Run this first to generate threshold_tuning_consensus_v2.pkl, which contains the consensus annotations for each annotated seizure.
 * BIDS_seizure_saving.py
@@ -77,7 +78,7 @@ script to pull the designated interictal data from iEEG.org and save it in iEEG-
 * seizure_detection_pretrain.py
 script to generate seizure detection values for each spontaneous and stimulation induced seizure using the NDD model and two benchmarks: Absolute slope, and a wavenet-based univariate seizure detector.
 * val_generate_model_annotations.py
-script to generate ueo channel and 10 second spread channel annotations for each seizure that had human annotations. The annotations were generated for each threshold in [0,4,750] in order to fit thresholds.
+script to generate ueo channel and 10 second spread channel annotations for each seizure that had human annotations at each threshold in a parameter sweep.
 * val_threshold_sweep_merging.py
 script for merging human annotations and model annotations at each of the swept thresholds
 * tuning_model_thresholds.ipynb
