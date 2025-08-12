@@ -9,6 +9,39 @@ Analyzing the relationsihp between low-frequency electrical stimulation induced 
 ### Manuscript: will be made available upon publication!
 
 ## Prerequisites/Dependencies
+- **OS**: Linux (tested). macOS should work; Windows is untested.
+- **Python (stim-env)**: Python 3.10.x (tested with 3.10.16). Saved artifacts use pickle protocol 5, so use Python ≥3.8 (3.10 recommended) to ensure compatibility.
+- **Environment setup**:
+  - Create a virtual environment (recommended name: `stim-env`).
+  - Install Python deps via the pinned `requirements.txt` at the repo root.
+  - Additional packages not pinned in `requirements.txt` but required by the code:
+    - `ieeg` (Python client for iEEG.org). Install from source at 
+    - `DSOSD` (provides the `DSOSD.model.NDD` class used by the detection pipeline). Install from its source per that project’s instructions.
+- **GPU (optional but recommended for deep models)**:
+  - The pinned wheels target CUDA 12.x (e.g., torch 2.2.0 + cu12 and TensorFlow 2.16.1). Ensure a compatible NVIDIA driver and CUDA runtime if using GPU. CPU-only runs are supported but slower.
+- **Jupyter**: JupyterLab 4.x is included in `requirements.txt` for running notebooks.
+- **MNE-BIDS and neuroimaging**: `mne`, `mne-bids`, `nibabel`, `nilearn` are pinned and required for BIDS I/O and analyses.
+- **Stats/ML libraries**: `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `pingouin`, `seaborn`, `matplotlib`, `fooof`, `kneed`, `bctpy`, and others are pinned in `requirements.txt`.
+- **R (for mixed-effects models and stats in `code/*.R`)**: R ≥4.1 with the following packages installed:
+  - `lme4`, `lmerTest`, `pbkrtest`, `dplyr`, `ggplot2`, `emmeans`, `multcomp`, `car`, `nlme`
+- **Access to iEEG.org**:
+  - An iEEG.org account is required to download raw EEG.
+  - The config expects `IEEG_USR` (username) and an `IEEG_PWD` path to a binary file containing the password.
+
+### Quick start
+- Create and activate the environment, then install Python deps:
+  ```bash
+  python3.10 -m venv stim-env
+  source stim-env/bin/activate
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  pip install ieeg  # if not already present in your env
+  # Install DSOSD from its source if your workflow uses NDD: DSOSD.model.NDD
+  ```
+- Install R dependencies (one-time):
+  ```r
+  install.packages(c("lme4","lmerTest","pbkrtest","dplyr","ggplot2","emmeans","multcomp","car","nlme"))
+  ```
 
 ## Data
 all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data.

@@ -1,4 +1,7 @@
 # Scientific computing imports
+import os as _os
+_os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # suppress TF INFO/WARN
+_os.environ['TF_TRT_DISABLED'] = '1'       # silence TF-TRT warnings if TRT not installed
 import numpy as np
 import scipy as sc
 import pandas as pd
@@ -19,6 +22,15 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from tensorflow.keras.models import load_model
 from tensorflow.config.experimental import set_memory_growth, list_physical_devices
+import tensorflow as tf
+from absl import logging as absl_logging
+absl_logging.set_verbosity(absl_logging.ERROR)
+tf.get_logger().setLevel('ERROR')
+try:
+    for _gpu in list_physical_devices('GPU'):
+        set_memory_growth(_gpu, True)
+except Exception:
+    pass
 
 # OS imports
 import os
@@ -28,7 +40,6 @@ from utils import *
 from stim_seizure_preprocessing_utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Setting Plotting parameters for heatmaps
 plt.rcParams['image.cmap'] = 'magma'
 
