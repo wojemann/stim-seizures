@@ -18,16 +18,13 @@ spread_df_all <- read.csv("/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCE
 cat("=== DATA STRUCTURE ===\n")
 cat("Time DF dimensions:", dim(time_df_all), "\n")
 cat("Spread DF dimensions:", dim(spread_df_all), "\n")
-cat("Null DF dimensions:", dim(null_df_all), "\n")
 
 cat("\nTime DF columns:", colnames(time_df_all), "\n")
 cat("Spread DF columns:", colnames(spread_df_all), "\n")
-cat("Null DF columns:", colnames(null_df_all), "\n")
 
 # Convert typical to factor
 time_df_all$typical <- as.factor(time_df_all$typical)
 spread_df_all$typical <- as.factor(spread_df_all$typical)
-null_df_all$typical <- as.factor(null_df_all$typical)
 
 # Check levels
 cat("\nTypical levels in time_df_all:", levels(time_df_all$typical), "\n")

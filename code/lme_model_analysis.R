@@ -6,6 +6,7 @@
 library(lme4)
 library(lmerTest)
 library(dplyr)
+library(tidyr)
 library(ggplot2)
 library(emmeans)
 library(multcomp)
@@ -110,66 +111,18 @@ if (!is.null(plot_thresholds)) {
     cat("\n")
   }
   
-  # Method 2: Mixed effects variance structure comparison
-  cat("Method 2 - Mixed Effects Variance Structure Comparison:\n")
-  if (!require(nlme, quietly = TRUE)) {
-    install.packages("nlme")
-    library(nlme)
-  }
-  
-  tryCatch({
-    # Model with homogeneous variance
-    model_homo <- nlme::lme(threshold ~ stim, random = ~1|patient, data = plot_thresholds)
-    
-    # Model with different variances by stim condition
-    model_hetero <- nlme::lme(threshold ~ stim, random = ~1|patient, 
-                             weights = varIdent(form = ~1|stim), data = plot_thresholds)
-    
-    # Likelihood ratio test for variance differences
-    variance_comparison <- anova(model_homo, model_hetero)
-    print(variance_comparison)
-    cat("\n")
-    
-    # Show variance estimates from heteroscedastic model
-    cat("Variance Estimates by Group:\n")
-    print(intervals(model_hetero)$varStruct)
-    cat("\n")
-    
-  }, error = function(e) {
-    cat("Mixed effects variance comparison failed:", e$message, "\n")
-  })
-  
-  # Method 3: Descriptive variance comparison
-  cat("Method 3 - Descriptive Variance Statistics:\n")
-  variance_stats <- plot_thresholds %>%
-    group_by(stim) %>%
-    summarise(
-      n = n(),
-      variance = var(threshold, na.rm = TRUE),
-      sd = sd(threshold, na.rm = TRUE),
-      cv = sd(threshold, na.rm = TRUE) / mean(threshold, na.rm = TRUE),
-      .groups = 'drop'
-    )
-  print(variance_stats)
-  
-  # Calculate variance ratio
-  if (nrow(variance_stats) == 2) {
-    var_ratio <- variance_stats$variance[variance_stats$stim == "Stimulated"] / 
-                variance_stats$variance[variance_stats$stim == "Spontaneous"]
-    cat("Variance Ratio (Stimulated/Spontaneous):", round(var_ratio, 3), "\n")
-  }
-  cat("\n")
+
   
 } else {
   cat("Threshold data not found. Skipping analysis.\n\n")
 }
 
 # ===================================================================
-# 2. MODEL AGREEMENT ANALYSIS (Onset)
+# 2. MODEL AGREEMENT DIFFERENCE ANALYSIS (NDD vs Benchmark Models)
 # ===================================================================
 
-cat("2. MODEL AGREEMENT ANALYSIS - ONSET\n")
-cat("====================================\n")
+cat("2. MODEL AGREEMENT DIFFERENCE ANALYSIS\n")
+cat("======================================\n")
 
 # Load onset agreement data
 onset_agreements <- read_data("onset_all_plot_agreements_for_lme.csv")
@@ -178,14 +131,23 @@ if (!is.null(onset_agreements)) {
   cat("Data loaded successfully. Shape:", nrow(onset_agreements), "x", ncol(onset_agreements), "\n")
   cat("Columns:", paste(colnames(onset_agreements), collapse = ", "), "\n\n")
   
-  # Data preparation for proper pairing
-  cat("Preparing data for paired comparisons...\n")
+  # Data preparation for difference calculations
+  cat("Preparing data for pairwise difference analysis...\n")
   
   # Check the structure of the data
   cat("Unique models:", paste(unique(onset_agreements$model), collapse = ", "), "\n")
   cat("Unique patients:", length(unique(onset_agreements$patient)), "\n")
-  cat("Data structure check:\n")
-  structure_check <- onset_agreements %>%
+  
+  # Filter to only include seizure detection models (not Interrater)
+  onset_models <- onset_agreements %>%
+    filter(model != "Interrater") %>%
+    mutate(
+      model = as.factor(model),
+      patient = as.factor(patient)
+    )
+  
+  # Check for complete cases (seizures with all three models)
+  structure_check <- onset_models %>%
     group_by(patient, approximate_onset) %>%
     summarise(
       n_models = n(),
@@ -193,106 +155,181 @@ if (!is.null(onset_agreements)) {
       .groups = 'drop'
     )
   
-  # Show examples of the pairing structure
-  cat("Sample of seizure-model combinations:\n")
-  print(head(structure_check, 10))
-  cat("\n")
-  
-  # Check for complete cases (seizures with all models)
   complete_seizures <- structure_check %>%
-    filter(n_models == length(unique(onset_agreements$model)))
+    filter(n_models == length(unique(onset_models$model)))
   
   cat("Seizures with all models present:", nrow(complete_seizures), "out of", nrow(structure_check), "\n")
   
   # Filter to only include complete cases for proper pairing
   if (nrow(complete_seizures) > 0) {
-    cat("Using only seizures with complete model data for paired analysis\n")
-    onset_agreements_paired <- onset_agreements %>%
+    cat("Using only seizures with complete model data for difference analysis\n")
+    onset_models_complete <- onset_models %>%
       semi_join(complete_seizures, by = c("patient", "approximate_onset"))
     
-    cat("Filtered data shape:", nrow(onset_agreements_paired), "x", ncol(onset_agreements_paired), "\n")
-    
-    # Verify the pairing worked
-    final_check <- onset_agreements_paired %>%
-      group_by(patient, approximate_onset) %>%
-      summarise(n_models = n(), .groups = 'drop')
-    
-    cat("All seizures now have", unique(final_check$n_models), "models\n\n")
+    cat("Filtered data shape:", nrow(onset_models_complete), "x", ncol(onset_models_complete), "\n\n")
     
   } else {
-    cat("Warning: No seizures found with all models present. Using all available data.\n")
-    onset_agreements_paired <- onset_agreements
+    cat("Warning: No seizures found with all models present. Cannot perform difference analysis.\n\n")
+    onset_models_complete <- NULL
   }
   
-  # Prepare data - filter out Interrater for model comparisons
-  onset_models <- onset_agreements_paired %>%
-    filter(model != "Interrater") %>%
-    mutate(
-      model = as.factor(model),
-      patient = as.factor(patient)
-    )
-  
-  # Descriptive statistics
-  cat("Descriptive Statistics by Model:\n")
-  desc_stats_onset <- onset_models %>%
-    group_by(model) %>%
-    summarise(
-      n = n(),
-      mean_dice = mean(dice, na.rm = TRUE),
-      median_dice = median(dice, na.rm = TRUE),
-      sd_dice = sd(dice, na.rm = TRUE),
-      .groups = 'drop'
-    )
-  print(desc_stats_onset)
-  cat("\n")
-  
-  # Mixed effects model for onset agreement
-  cat("Mixed Effects Model for Onset Agreement:\n")
-  onset_model <- lmer(dice ~ model + (1|patient) + (1|approximate_onset), data = onset_models)
-  
-  cat("Note: This model accounts for:\n")
-  cat("- Patient-level clustering (seizures within patients)\n") 
-  cat("- Seizure-level pairing (same seizure analyzed by different models)\n\n")
-  
-  # Model summary
-  cat("Model Summary:\n")
-  print(summary(onset_model))
-  cat("\n")
-  
-  # ANOVA for fixed effects
-  cat("ANOVA for Fixed Effects:\n")
-  onset_anova <- anova(onset_model)
-  print(onset_anova)
-  cat("\n")
-  
-  # Post-hoc comparisons
-  cat("Post-hoc Comparisons (All Pairwise):\n")
-  onset_emm <- emmeans(onset_model, ~ model)
-  onset_contrasts <- contrast(onset_emm, method = "pairwise", adjust = "bonferroni")
-  print(onset_contrasts)
-  cat("\n")
-  
-  # Specific contrasts focusing on NDD model
-  cat("Specific Contrasts (NDD vs Others):\n")
-  if ("NDD" %in% levels(onset_models$model)) {
-    ndd_contrasts <- contrast(onset_emm, 
-                              list("NDD vs AbsSlp" = c(-1, 0, 1),
-                                   "NDD vs DL" = c(0, -1, 1)),
-                              adjust = "bonferroni")
-    print(ndd_contrasts)
+  if (!is.null(onset_models_complete) && nrow(onset_models_complete) > 0) {
+    
+    # Descriptive statistics by model
+    cat("Descriptive Statistics by Model:\n")
+    desc_stats_onset <- onset_models_complete %>%
+      group_by(model) %>%
+      summarise(
+        n = n(),
+        mean_dice = mean(dice, na.rm = TRUE),
+        median_dice = median(dice, na.rm = TRUE),
+        sd_dice = sd(dice, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    print(desc_stats_onset)
+    cat("\n")
+    
+    # Reshape data to wide format for difference calculations
+    onset_wide <- onset_models_complete %>%
+      dplyr::select(patient, approximate_onset, model, dice) %>%
+      pivot_wider(names_from = model, values_from = dice)
+    
+    cat("Wide format data shape:", nrow(onset_wide), "x", ncol(onset_wide), "\n")
+    cat("Available models in wide format:", paste(setdiff(colnames(onset_wide), c("patient", "approximate_onset")), collapse = ", "), "\n\n")
+    
+    # Calculate differences: NDD - Benchmark models
+    differences_data <- onset_wide %>%
+      mutate(
+        patient = as.factor(patient)
+      )
+    
+    # Initialize vectors to store p-values for Bonferroni correction
+    p_values <- c()
+    comparison_names <- c()
+    
+    # Analysis 1: NDD vs AbsSlp
+    if ("NDD" %in% colnames(onset_wide) && "AbsSlp" %in% colnames(onset_wide)) {
+      cat("=== ANALYSIS 1: NDD vs AbsSlp ===\n")
+      
+      # Calculate difference (NDD - AbsSlp)
+      differences_data$diff_NDD_AbsSlp <- differences_data$NDD - differences_data$AbsSlp
+      
+      # Remove rows with missing differences
+      diff_data_1 <- differences_data %>%
+        filter(!is.na(diff_NDD_AbsSlp))
+      
+      cat("Number of seizures with complete NDD-AbsSlp pairs:", nrow(diff_data_1), "\n")
+      
+      # Descriptive statistics for differences
+      cat("Difference Statistics (NDD - AbsSlp):\n")
+      cat("Mean difference:", round(mean(diff_data_1$diff_NDD_AbsSlp), 4), "\n")
+      cat("SD of differences:", round(sd(diff_data_1$diff_NDD_AbsSlp), 4), "\n")
+      cat("95% CI of mean difference:", 
+          round(mean(diff_data_1$diff_NDD_AbsSlp) - 1.96 * sd(diff_data_1$diff_NDD_AbsSlp) / sqrt(nrow(diff_data_1)), 4), "to",
+          round(mean(diff_data_1$diff_NDD_AbsSlp) + 1.96 * sd(diff_data_1$diff_NDD_AbsSlp) / sqrt(nrow(diff_data_1)), 4), "\n\n")
+      
+      # Mixed effects model on differences with patient random effect
+      cat("Mixed Effects Model (Difference ~ 1 + (1|patient)):\n")
+      model_diff_1 <- lmer(diff_NDD_AbsSlp ~ 1 + (1|patient), data = diff_data_1)
+      
+      # Model summary
+      print(summary(model_diff_1))
+      cat("\n")
+      
+      # Extract p-value for the intercept (tests if mean difference != 0)
+      model_summary_1 <- summary(model_diff_1)
+      p_val_1 <- model_summary_1$coefficients[1, "Pr(>|t|)"]
+      p_values <- c(p_values, p_val_1)
+      comparison_names <- c(comparison_names, "NDD_vs_AbsSlp")
+      
+      cat("Intercept p-value (test of mean difference = 0):", p_val_1, "\n\n")
+    }
+    
+    # Analysis 2: NDD vs DL
+    if ("NDD" %in% colnames(onset_wide) && "DL" %in% colnames(onset_wide)) {
+      cat("=== ANALYSIS 2: NDD vs DL ===\n")
+      
+      # Calculate difference (NDD - DL)
+      differences_data$diff_NDD_DL <- differences_data$NDD - differences_data$DL
+      
+      # Remove rows with missing differences
+      diff_data_2 <- differences_data %>%
+        filter(!is.na(diff_NDD_DL))
+      
+      cat("Number of seizures with complete NDD-DL pairs:", nrow(diff_data_2), "\n")
+      
+      # Descriptive statistics for differences
+      cat("Difference Statistics (NDD - DL):\n")
+      cat("Mean difference:", round(mean(diff_data_2$diff_NDD_DL), 4), "\n")
+      cat("SD of differences:", round(sd(diff_data_2$diff_NDD_DL), 4), "\n")
+      cat("95% CI of mean difference:", 
+          round(mean(diff_data_2$diff_NDD_DL) - 1.96 * sd(diff_data_2$diff_NDD_DL) / sqrt(nrow(diff_data_2)), 4), "to",
+          round(mean(diff_data_2$diff_NDD_DL) + 1.96 * sd(diff_data_2$diff_NDD_DL) / sqrt(nrow(diff_data_2)), 4), "\n\n")
+      
+      # Mixed effects model on differences with patient random effect
+      cat("Mixed Effects Model (Difference ~ 1 + (1|patient)):\n")
+      model_diff_2 <- lmer(diff_NDD_DL ~ 1 + (1|patient), data = diff_data_2)
+      
+      # Model summary
+      print(summary(model_diff_2))
+      cat("\n")
+      
+      # Extract p-value for the intercept
+      model_summary_2 <- summary(model_diff_2)
+      p_val_2 <- model_summary_2$coefficients[1, "Pr(>|t|)"]
+      p_values <- c(p_values, p_val_2)
+      comparison_names <- c(comparison_names, "NDD_vs_DL")
+      
+      cat("Intercept p-value (test of mean difference = 0):", p_val_2, "\n\n")
+    }
+    
+    # Bonferroni correction
+    if (length(p_values) > 0) {
+      cat("=== BONFERRONI CORRECTION ===\n")
+      cat("Number of comparisons:", length(p_values), "\n")
+      cat("Alpha level: 0.05\n")
+      cat("Bonferroni-corrected alpha:", round(0.05 / length(p_values), 4), "\n\n")
+      
+      # Apply Bonferroni correction
+      p_adjusted <- p.adjust(p_values, method = "bonferroni")
+      
+      # Results summary
+      results_summary <- data.frame(
+        Comparison = comparison_names,
+        Raw_p_value = round(p_values, 6),
+        Bonferroni_p_value = round(p_adjusted, 6),
+        Significant_raw = p_values < 0.05,
+        Significant_bonferroni = p_adjusted < 0.05
+      )
+      
+      cat("SUMMARY OF RESULTS:\n")
+      print(results_summary)
+      cat("\n")
+      
+      # Interpretation
+      cat("INTERPRETATION:\n")
+      for (i in 1:length(comparison_names)) {
+        cat("- ", comparison_names[i], ": ", 
+            ifelse(p_adjusted[i] < 0.05, "Significant difference", "No significant difference"),
+            " (Bonferroni-adjusted p = ", round(p_adjusted[i], 4), ")\n", sep = "")
+      }
+      cat("\n")
+    }
+    
+  } else {
+    cat("Cannot perform difference analysis due to missing data.\n\n")
   }
-  cat("\n")
   
 } else {
   cat("Onset agreement data not found. Skipping analysis.\n\n")
 }
 
 # ===================================================================
-# 2a. LSTM MODEL VS HUMAN INTERRATER AGREEMENT ANALYSIS
+# 2a. LSTM MODEL VS HUMAN INTERRATER DIFFERENCE ANALYSIS
 # ===================================================================
 
-cat("2a. LSTM MODEL VS HUMAN INTERRATER AGREEMENT ANALYSIS\n")
-cat("======================================================\n")
+cat("2a. LSTM MODEL VS HUMAN INTERRATER DIFFERENCE ANALYSIS\n")
+cat("=======================================================\n")
 
 # Load the long-format data (LSTM vs human, long-form)
 model_interrater_long <- read_data("model-interrater_agreement.csv")
@@ -301,54 +338,197 @@ if (!is.null(model_interrater_long)) {
   cat("Data loaded successfully. Shape:", nrow(model_interrater_long), "x", ncol(model_interrater_long), "\n")
   cat("Columns:", paste(colnames(model_interrater_long), collapse = ", "), "\n\n")
   
+  # Data preparation for difference calculations
+  cat("Preparing data for LSTM vs Human difference analysis...\n")
+  
   # Convert to factors
   model_interrater_long$patient <- as.factor(model_interrater_long$patient)
   model_interrater_long$annotator <- as.factor(model_interrater_long$annotator)
-  if ("approximate_onset" %in% colnames(model_interrater_long)) {
-    model_interrater_long$approximate_onset <- as.factor(model_interrater_long$approximate_onset)
-  }
   
-  # Descriptive statistics
-  cat("Descriptive Statistics by Annotator (LSTM vs Human):\n")
-  desc_stats_2a <- model_interrater_long %>%
-    group_by(annotator) %>%
+  # Check available annotators
+  cat("Unique annotators:", paste(unique(model_interrater_long$annotator), collapse = ", "), "\n")
+  cat("Unique patients:", length(unique(model_interrater_long$patient)), "\n")
+  
+  # Check for complete cases (seizures with both annotators)
+  structure_check <- model_interrater_long %>%
+    group_by(patient, approximate_onset) %>%
     summarise(
-      n = n(),
-      mean_dice = mean(dice, na.rm = TRUE),
-      median_dice = median(dice, na.rm = TRUE),
-      sd_dice = sd(dice, na.rm = TRUE),
+      n_annotators = n(),
+      annotators_present = paste(sort(unique(annotator)), collapse = ", "),
       .groups = 'drop'
     )
-  print(desc_stats_2a)
+  
+  complete_seizures <- structure_check %>%
+    filter(n_annotators == length(unique(model_interrater_long$annotator)))
+  
+  cat("Seizures with both annotators present:", nrow(complete_seizures), "out of", nrow(structure_check), "\n")
+  
+  # Filter to only include complete cases for proper pairing
+  if (nrow(complete_seizures) > 0) {
+    cat("Using only seizures with complete annotator data for difference analysis\n")
+    interrater_complete <- model_interrater_long %>%
+      semi_join(complete_seizures, by = c("patient", "approximate_onset"))
+    
+    cat("Filtered data shape:", nrow(interrater_complete), "x", ncol(interrater_complete), "\n\n")
+    
+    # Descriptive statistics by annotator
+    cat("Descriptive Statistics by Annotator:\n")
+    desc_stats_2a <- interrater_complete %>%
+      group_by(annotator) %>%
+      summarise(
+        n = n(),
+        mean_dice = mean(dice, na.rm = TRUE),
+        median_dice = median(dice, na.rm = TRUE),
+        sd_dice = sd(dice, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    print(desc_stats_2a)
+    cat("\n")
+    
+    # Reshape data to wide format for difference calculations
+    interrater_wide <- interrater_complete %>%
+      dplyr::select(patient, approximate_onset, annotator, dice) %>%
+      pivot_wider(names_from = annotator, values_from = dice)
+    
+    cat("Wide format data shape:", nrow(interrater_wide), "x", ncol(interrater_wide), "\n")
+    cat("Available annotators in wide format:", paste(setdiff(colnames(interrater_wide), c("patient", "approximate_onset")), collapse = ", "), "\n\n")
+    
+    # Calculate differences: Model - Human (assuming one is LSTM/Model and other is Human)
+    annotator_names <- setdiff(colnames(interrater_wide), c("patient", "approximate_onset"))
+    
+    if (length(annotator_names) == 2) {
+      # Determine which is model and which is human based on names
+      model_col <- annotator_names[grepl("LSTM|Model|NDD", annotator_names, ignore.case = TRUE)]
+      human_col <- annotator_names[!annotator_names %in% model_col]
+      
+      # If can't determine automatically, use first vs second
+      if (length(model_col) == 0) {
+        model_col <- annotator_names[1]
+        human_col <- annotator_names[2]
+        cat("Note: Could not automatically identify model vs human annotator.\n")
+        cat("Using", model_col, "as model and", human_col, "as human.\n\n")
+      }
+      
+      cat("=== ANALYSIS: ", model_col, " vs ", human_col, " ===\n", sep = "")
+      
+      # Calculate difference (Model - Human)
+      diff_data <- interrater_wide %>%
+        mutate(
+          patient = as.factor(patient),
+          diff_model_human = .data[[model_col]] - .data[[human_col]]
+        ) %>%
+        filter(!is.na(diff_model_human))
+      
+      cat("Number of seizures with complete Model-Human pairs:", nrow(diff_data), "\n")
+      
+      # Descriptive statistics for differences
+      cat("Difference Statistics (", model_col, " - ", human_col, "):\n", sep = "")
+      cat("Mean difference:", round(mean(diff_data$diff_model_human), 4), "\n")
+      cat("SD of differences:", round(sd(diff_data$diff_model_human), 4), "\n")
+      cat("95% CI of mean difference:", 
+          round(mean(diff_data$diff_model_human) - 1.96 * sd(diff_data$diff_model_human) / sqrt(nrow(diff_data)), 4), "to",
+          round(mean(diff_data$diff_model_human) + 1.96 * sd(diff_data$diff_model_human) / sqrt(nrow(diff_data)), 4), "\n\n")
+      
+      # Mixed effects model on differences with patient random effect
+      cat("Mixed Effects Model (Difference ~ 1 + (1|patient)):\n")
+      model_diff_interrater <- lmer(diff_model_human ~ 1 + (1|patient), data = diff_data)
+      
+      # Model summary
+      print(summary(model_diff_interrater))
+      cat("\n")
+      
+      # Extract p-value for the intercept (tests if mean difference != 0)
+      model_summary_interrater <- summary(model_diff_interrater)
+      p_val_interrater <- model_summary_interrater$coefficients[1, "Pr(>|t|)"]
+      
+      cat("Intercept p-value (test of mean difference = 0):", p_val_interrater, "\n")
+             cat("Interpretation: ", 
+           ifelse(p_val_interrater < 0.05, "Significant difference", "No significant difference"),
+           " between ", model_col, " and ", human_col, " (p = ", round(p_val_interrater, 4), ")\n\n", sep = "")
+       
+       # Store p-value for combined correction (will be used later)
+       interrater_p_value <- p_val_interrater
+       interrater_comparison_name <- paste(model_col, "vs", human_col, sep = "_")
+       
+     } else {
+       cat("Error: Expected exactly 2 annotators, found", length(annotator_names), "\n")
+       cat("Available annotators:", paste(annotator_names, collapse = ", "), "\n\n")
+       interrater_p_value <- NULL
+       interrater_comparison_name <- NULL
+     }
+     
+   } else {
+     cat("Warning: No seizures found with both annotators present. Cannot perform difference analysis.\n\n")
+     interrater_p_value <- NULL
+     interrater_comparison_name <- NULL
+   }
+   
+} else {
+  cat("Model/interrater long-format data not found. Skipping analysis.\n\n")
+  interrater_p_value <- NULL
+  interrater_comparison_name <- NULL
+}
+
+# ===================================================================
+# 2b. COMBINED MODEL PERFORMANCE BONFERRONI CORRECTION
+# ===================================================================
+
+cat("2b. COMBINED MODEL PERFORMANCE BONFERRONI CORRECTION\n")
+cat("====================================================\n")
+
+# Combine p-values from model comparisons (section 2) and interrater comparison (section 2a)
+combined_p_values <- c()
+combined_comparison_names <- c()
+
+# Add model comparison p-values if they exist
+if (exists("p_values") && length(p_values) > 0) {
+  combined_p_values <- c(combined_p_values, p_values)
+  combined_comparison_names <- c(combined_comparison_names, comparison_names)
+}
+
+# Add interrater p-value if it exists
+if (!is.null(interrater_p_value)) {
+  combined_p_values <- c(combined_p_values, interrater_p_value)
+  combined_comparison_names <- c(combined_comparison_names, interrater_comparison_name)
+}
+
+if (length(combined_p_values) > 0) {
+  cat("=== COMBINED BONFERRONI CORRECTION FOR ALL MODEL PERFORMANCE COMPARISONS ===\n")
+  cat("Total number of comparisons:", length(combined_p_values), "\n")
+  cat("Comparisons included:\n")
+  for (i in 1:length(combined_comparison_names)) {
+    cat("  ", i, ". ", combined_comparison_names[i], " (raw p = ", round(combined_p_values[i], 4), ")\n", sep = "")
+  }
+  cat("\nAlpha level: 0.05\n")
+  cat("Bonferroni-corrected alpha:", round(0.05 / length(combined_p_values), 4), "\n\n")
+  
+  # Apply Bonferroni correction
+  combined_p_adjusted <- p.adjust(combined_p_values, method = "bonferroni")
+  
+  # Combined results summary
+  combined_results_summary <- data.frame(
+    Comparison = combined_comparison_names,
+    Raw_p_value = round(combined_p_values, 6),
+    Bonferroni_p_value = round(combined_p_adjusted, 6),
+    Significant_raw = combined_p_values < 0.05,
+    Significant_bonferroni = combined_p_adjusted < 0.05
+  )
+  
+  cat("COMBINED SUMMARY OF ALL MODEL PERFORMANCE RESULTS:\n")
+  print(combined_results_summary)
   cat("\n")
   
-  # Mixed effects model: dice ~ annotator + (1|Patient) + (1|approximate_onset)
-  cat("Mixed Effects Model for LSTM vs Human Dice:\n")
-  model_vs_human <- lmer(dice ~ annotator + (1|patient) + (1|approximate_onset), data = model_interrater_long)
-  
-  # Model summary
-  print(summary(model_vs_human))
-  cat("\n")
-  
-  # ANOVA for fixed effects
-  cat("ANOVA for Fixed Effects:\n")
-  print(anova(model_vs_human))
-  cat("\n")
-  
-  # Post-hoc comparisons
-  cat("Post-hoc Comparisons (LSTM vs Human):\n")
-  emm_2a <- emmeans(model_vs_human, ~ annotator)
-  contrasts_2a <- contrast(emm_2a, method = "pairwise")
-  print(contrasts_2a)
-  cat("\n")
-  
-  # Effect size estimation
-  cat("Effect Size Estimation:\n")
-  print(confint(contrasts_2a))
+  # Combined interpretation
+  cat("COMBINED INTERPRETATION (after Bonferroni correction for all model comparisons):\n")
+  for (i in 1:length(combined_comparison_names)) {
+    cat("- ", combined_comparison_names[i], ": ", 
+        ifelse(combined_p_adjusted[i] < 0.05, "Significant difference", "No significant difference"),
+        " (Bonferroni-adjusted p = ", round(combined_p_adjusted[i], 4), ")\n", sep = "")
+  }
   cat("\n")
   
 } else {
-  cat("Model/interrater long-format data not found. Skipping analysis.\n\n")
+  cat("No p-values available for combined correction.\n\n")
 }
 
 # ===================================================================
