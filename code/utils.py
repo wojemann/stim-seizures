@@ -55,11 +55,16 @@ from sklearn.preprocessing import normalize
 from sklearn.decomposition import NMF
 from sklearn.utils import resample
 
+import statsmodels.formula.api as smf
+
 import matplotlib.pyplot as plt
 import seaborn as sns
-from fooof import FOOOFGroup
+from statannotations.Annotator import Annotator
+
 import nibabel as nii
 
+# Agreement metrics
+from sklearn.metrics import cohen_kappa_score, f1_score, matthews_corrcoef
 warnings.filterwarnings("ignore")
 
 ########################################## Data I/O ##########################################
@@ -1194,29 +1199,6 @@ def remove_scalp_electrodes(raw_labels):
 
 
 ######################## Univariate, Time Domain ########################
-def _timeseries_to_wins(
-    data: np.ndarray, fs: float, win_size=2, win_stride=1
-) -> np.ndarray:
-    """_summary_
-
-    Args:
-        data (np.ndarray)
-        fs (float): _description_
-        win_size (int, optional): _description_. Defaults to 2.
-        win_stride (int, optional): _description_. Defaults to 1.
-
-    Returns:
-        np.ndarray: _description_
-    """
-    n_samples = data.shape[-1]
-
-    idx = (
-        np.arange(win_size * fs, dtype=int)[None, :]
-        + np.arange(n_samples - win_size * fs + 1, dtype=int)[
-            :: int(win_stride * fs), None
-        ]
-    )
-    return data[:, idx]
 
 def MovingWinClips(x,fs,winLen,winDisp):
   # calculate number of windows and initialize receiver
@@ -1231,183 +1213,7 @@ def MovingWinClips(x,fs,winLen,winDisp):
   
   return samples
 
-def ll(x):
-    return np.sum(np.abs(np.diff(x)), axis=-1)
 
-
-def bandpower_fooof(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2, win_stride=1) -> np.array:
-    """Use FOOOF to calculate bandpower
-
-    Args:
-        x (np.ndarray): _description_
-        fs (float): _description_
-        lo (int, optional): _description_. Defaults to 1.
-        hi (int, optional): _description_. Defaults to 120.
-        relative (bool, optional): _description_. Defaults to True.
-        win_size (int, optional): _description_. Defaults to 2.
-        win_stride (int, optional): _description_. Defaults to 1.
-
-    Returns:
-        np.array: _description_
-    """
-    # bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
-    bands = {"broad":(1,100)}
-
-    nperseg = int(win_size * fs)
-    noverlap = int(win_stride * fs)
-
-    freq, pxx = welch(x=x, fs=fs, nperseg=nperseg, noverlap=noverlap, axis=1)
-
-    # Initialize a FOOOF object
-    fg = FOOOFGroup()
-
-    # Set the frequency range to fit the model
-    freq_range = [lo, hi]
-
-    # Report: fit the model, print the resulting parameters, and plot the reconstruction
-    fg.fit(freq, pxx, freq_range)
-    fres = fg.get_results()
-
-    def one_over_f(f, b0, b1):
-        return b0 - np.log10(f ** b1)
-
-    idx = np.logical_and(freq >= lo, freq <= hi)
-    one_over_f_curves = np.array([one_over_f(freq[idx], *i.aperiodic_params) for i in fres])
-
-    residual = np.log10(pxx[:, idx]) - one_over_f_curves
-    freq = freq[idx]
-
-    bandpowers = np.zeros((len(bands), pxx.shape[0]))
-    for i_band, (lo, hi) in enumerate(bands.values()):
-        if np.logical_and(60 >= lo, 60 <= hi):
-            idx1 = np.logical_and(freq >= lo, freq <= 55)
-            idx2 = np.logical_and(freq >= 65, freq <= hi)
-            bp1 = simps(
-                y=residual[:, idx1],
-                x=freq[idx1],
-                dx=freq[1] - freq[0]
-            )
-            bp2 = simps(
-                y=residual[:, idx2],
-                x=freq[idx2],
-                dx=freq[1] - freq[0]
-            )
-            bandpowers[i_band] = bp1 + bp2
-        else:
-            idx = np.logical_and(freq >= lo, freq <= hi)
-            bandpowers[i_band] = simps(
-                y=residual[:, idx],
-                x=freq[idx],
-                dx=freq[1] - freq[0]
-            )
-    return bandpowers.T
-
-def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2, win_stride=1) -> np.array:
-    """
-    Calculates the relative bandpower of a signal x, using a butterworth filter of order 'order'
-    and bandpass filter between lo and hi Hz.
-
-    Use scipy.signal.welch and scipy.signal.simps
-    """
-    bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
-
-    nperseg = int(win_size * fs)
-    noverlap = nperseg - int(win_stride * fs)
-
-    freq, pxx = welch(x=x, fs=fs, nperseg=nperseg, noverlap=noverlap, axis=1)
-    
-    # log transform the power spectrum
-    # pxx = 10*np.log10(pxx)
-    
-    all_bands = np.zeros((pxx.shape[0], len(bands)))
-    for i, (band, (lo, hi)) in enumerate(bands.items()):
-        idx_band = np.logical_and(freq >= lo, freq <= hi)
-        bp = simps(pxx[:, idx_band], dx=freq[1] - freq[0])
-        # relative
-        if relative:
-            bp /= simps(pxx, dx=freq[1] - freq[0])
-        all_bands[:, i] = bp
-    return all_bands
-    # return bp
-    # return data_filt
-
-
-def ft_extract(
-    data: np.ndarray, fs: float, ft: str, win_size=2, win_stride=1, fn_kwargs={}
-) -> np.ndarray:
-    """_summary_
-
-    Args:
-        data (mne.io.edf.edf.RawEDF): _description_
-        ft (str): _description_
-        win_size (int, optional): _description_. Defaults to 2.
-        win_stride (int, optional): _description_. Defaults to 1.
-
-    Returns:
-        np.ndarray: _description_
-    """
-    wins = _timeseries_to_wins(data, fs, win_size, win_stride)
-    wins = np.transpose(wins, (1, 0, 2))
-    (n_wins, n_ch, _) = wins.shape
-
-    # if ft is a list of features, then calculate both featurs and concatenate
-    if isinstance(ft, list):
-        assert len(ft) == len(fn_kwargs), "Incorrect number of feature arguments given"
-        # ft_array = np.empty((n_ch, n_wins, len(ft)))
-        ft_array = []
-        for i, fn in enumerate(ft):
-            # if f is not callable, then raise value error
-            if not callable(fn):
-                raise ValueError("Incorrect feature argument given")
-
-            # if bandpower, then don't iterate over windows
-            if fn is bandpower:
-                # include win_size and win_stride in kwargs
-                fn_kwargs[i]["win_size"] = win_size
-                fn_kwargs[i]["win_stride"] = win_stride
-
-                ft_array.append(fn(data, **(fn_kwargs[i])))
-            else:
-                for j, win in enumerate(wins):
-                    # ft_array[:, j, i] = fn(win, **(fn_kwargs[i]))
-                    ft_array.append(fn(win, **(fn_kwargs[i])))
-        ft_array = np.array(ft_array)
-        # transpose to n_ch x n_wins x n_ft
-        ft_array = np.transpose(ft_array, (1, 0, 2))
-        return ft_array
-
-    elif callable(ft):
-        # ft_array = np.empty((n_ch, n_wins))
-
-        ft_array = []
-
-        if ft is bandpower:
-            # include win_size and win_stride in kwargs
-            fn_kwargs["win_size"] = win_size
-            fn_kwargs["win_stride"] = win_stride
-
-            ft_array.append(ft(data, **fn_kwargs))
-        else:
-            for i, win in enumerate(wins):
-                ft_array.append(ft(win, **fn_kwargs))
-        
-            # ft_array[:, i] = ft(win, **fn_kwargs)
-        ft_array = np.array(ft_array)
-        
-        # convert 2 dim to 3 dim
-        if ft_array.ndim == 2:
-            ft_array = ft_array[:, :, None]
-        # transpose to n_ch x n_wins x n_ft
-        ft_array = np.transpose(ft_array, (1, 0, 2))
-
-    else:
-        raise ValueError("Incorrect feature type given")
-
-    return ft_array
-
-
-def _ll(x):
-    return np.sum(np.abs(np.diff(x)), axis=-1)
 
 def dice_score(x,y):
     num = 2*len(np.intersect1d(x,y))
@@ -1418,136 +1224,6 @@ def dice_score(x,y):
     denom = len(x)+len(y)
     return num/denom
 
-######################## Univariate, Spectral Domain ########################
-bands = [
-    [1, 4],  # delta
-    [4, 8],  # theta
-    [8, 12],  # alpha
-    [12, 30],  # beta
-    [30, 80],  # gamma
-    [1, 80],  # broad
-]
-band_names = ["delta", "theta", "alpha", "beta", "gamma", "broad"]
-N_BANDS = len(bands)
-
-def _one_over_f(f: np.ndarray, b0: float, b1: float) -> np.ndarray:
-    """_summary_
-
-    Args:
-        f (np.ndarray): _description_
-        b0 (float): _description_
-        b1 (float): _description_
-
-    Returns:
-        np.ndarray: _description_
-    """
-    return b0 - np.log10(f**b1)
-
-
-def spectral_features(
-    data: np.ndarray, fs: float, win_size=2, win_stride=1
-) -> pd.DataFrame:
-    """_summary_
-
-    Args:
-        data (np.ndarray): _description_
-        fs (float): _description_
-
-    Returns:
-        pd.DataFrame: _description_
-    """
-    feature_names = [f"{i} power" for i in band_names] + ["b0", "b1"]
-
-    freq, pxx = welch(
-        x=data,
-        fs=fs,
-        window="hamming",
-        nperseg=int(fs * win_size),
-        noverlap=int(fs * win_stride),
-        axis=0,
-    )
-
-    # Initialize a FOOOF object
-    fg = FOOOFGroup(verbose=False)
-
-    # Set the frequency range to fit the model
-    freq_range = [0.5, 80]
-
-    # Report: fit the model, print the resulting parameters, and plot the reconstruction
-    fg.fit(freq, pxx.T, freq_range)
-    fres = fg.get_results()
-
-    idx = np.logical_and(freq >= freq_range[0], freq <= freq_range[1])
-    one_over_f_curves = np.array(
-        [_one_over_f(freq[idx], *i.aperiodic_params) for i in fres]
-    )
-
-    residual = np.log10(pxx[idx]).T - one_over_f_curves
-    freq = freq[idx]
-
-    bandpowers = np.zeros((len(bands), pxx.shape[-1]))
-    for i_band, (lo, hi) in enumerate(bands):
-        if np.logical_and(60 >= lo, 60 <= hi):
-            idx1 = np.logical_and(freq >= lo, freq <= 55)
-            idx2 = np.logical_and(freq >= 65, freq <= hi)
-            bp1 = simps(y=residual[:, idx1], x=freq[idx1], dx=freq[1] - freq[0])
-            bp2 = simps(y=residual[:, idx2], x=freq[idx2], dx=freq[1] - freq[0])
-            bandpowers[i_band] = bp1 + bp2
-        else:
-            idx = np.logical_and(freq >= lo, freq <= hi)
-            bandpowers[i_band] = simps(
-                y=residual[:, idx], x=freq[idx], dx=freq[1] - freq[0]
-            )
-    aperiodic_params = np.array([i.aperiodic_params for i in fres])
-    clip_features = np.row_stack((bandpowers, aperiodic_params.T))
-
-    return pd.DataFrame(clip_features, index=feature_names, columns=data.columns)
-
-
-def coherence_bands(
-    data: Union[pd.DataFrame, np.ndarray], fs: float, win_size=2, win_stride=1
-) -> np.ndarray:
-    """_summary_
-
-    Args:
-        data (Union[pd.DataFrame, np.ndarray]): _description_
-        fs (float): _description_
-
-    Returns:
-        np.ndarray: _description_
-    """
-    _, n_channels = data.shape
-    n_edges = sum(1 for i in itertools.combinations(range(n_channels), 2))
-    n_freq = int(fs) + 1
-
-    cohers = np.zeros((n_freq, n_edges))
-
-    for i_pair, (ch1, ch2) in enumerate(itertools.combinations(range(n_channels), 2)):
-        freq, pair_coher = coherence(
-            data.iloc[:, ch1],
-            data.iloc[:, ch2],
-            fs=fs,
-            window="hamming",
-            nperseg=int(fs * win_size),
-            noverlap=int(fs * win_stride),
-        )
-
-        cohers[:, i_pair] = pair_coher
-
-    # keep only between originally filtered range
-    filter_idx = np.logical_and(freq >= 0.5, freq <= 80)
-    freq = freq[filter_idx]
-    cohers = cohers[filter_idx]
-
-    coher_bands = np.empty((N_BANDS, n_edges))
-    coher_bands[-1] = np.mean(cohers, axis=0)
-
-    # format all frequency bands
-    for i_band, (lower, upper) in enumerate(bands[:-1]):
-        filter_idx = np.logical_and(freq >= lower, freq <= upper)
-        coher_bands[i_band] = np.mean(cohers[filter_idx], axis=0)
-
-    return coher_bands
 
 ########################### Workspace Preparation ###########################
 def set_seed(seed):
@@ -1604,3 +1280,146 @@ def in_parallel(func, data, verbose=False, n_jobs = -1):
         print(f"Processing {len(data)} items in parallel using {threads} threads")
 
     return Parallel(n_jobs=threads)(delayed(func)(item) for item in data)
+
+########################### Analysis Utils ###########################
+
+def calculate_seizure_similarity(annots,first_annot = 'ueo_consensus', second_annot = 'ueo_consensus',paired=True):
+    annot_list = ["kappa","F1","MCC","patient","spont","typical"]
+    annot_dict = {key:[] for key in annot_list}
+    skip_pt = []
+    for pt,group in annots.groupby("patient"):
+        if (sum(group.stim == 0) < 2) and paired:
+            skip_pt.append(pt)
+            continue
+        elif len(group) < 2:
+            skip_pt.append(pt)
+            continue
+        # Iterate through each seizure
+        for i in range(len(group)):
+            group.reset_index(drop=True,inplace=True)
+            ch_mask = group.loc[i,first_annot].reshape(-1)
+            for j in range(i+1,len(group)):
+                if (group.loc[i,'stim'] == 1)  and (group.loc[j,'stim'] == 1): # skip both stim
+                    continue
+                ch_mask2 = group.loc[j,second_annot].reshape(-1)
+                annot_dict["kappa"].append(cohen_kappa_score(ch_mask,ch_mask2))
+                annot_dict["F1"].append(f1_score(ch_mask,ch_mask2))
+                annot_dict["MCC"].append(matthews_corrcoef(ch_mask,ch_mask2))
+                annot_dict["spont"].append(not ((group.loc[i,'stim'] == 1)  or (group.loc[j,'stim'] == 1)))
+                # want to append a boolean that will tell me if one sz is stim and one sz is typical
+                annot_dict["typical"].append(((group.loc[i,'typical'] == 1)  
+                                                        or (group.loc[j,'typical'] == 1)))
+                annot_dict["patient"].append(pt)
+    annot_df = pd.DataFrame(annot_dict)
+    print(f"Skipped {skip_pt} due to insufficient spontaneous seizures")
+    return annot_df
+
+    
+def plot_seizure_similarity(dat,agreement='MCC',palette=['red','blue','purple'],annot_type='',
+                            sz_level=True, binary = False, typical = None, combiner = 75,
+                            annot_stats=True):
+    if typical is not None:
+        all_groups = []
+        for _, group in dat.groupby(['patient']):
+            stims = group.loc[(group.spont==False) & (group.typical == typical),:]
+
+            if len(stims) == 0:
+                continue
+            
+            all_groups.append(pd.concat([stims,group.loc[group.spont,:]],axis=0))
+
+        dat = pd.concat(all_groups, axis=0)
+
+
+    def percentile(x,combiner=combiner):
+        return np.percentile(x,combiner,method='nearest')
+        # return np.mean(x)
+
+
+    # Define the aggregation functions
+    numeric_cols = dat.select_dtypes(include='number').columns
+    non_numeric_cols = dat.select_dtypes(exclude='number').columns.difference(['patient', 'spont'])
+    
+    if (agreement == 'Rank'):
+        dat['Rank'] = dat['Rank'].fillna(0)
+        # dat = dat[~dat.isna().any(axis=1)]
+
+    pt_data = dat.groupby(['patient', 'spont']).agg(
+        {col: percentile for col in numeric_cols} |
+        {col: 'max' for col in non_numeric_cols}
+    ).reset_index()
+
+    # pt_data = data.groupby(["patient","spont"])[["kappa","F1"]].apply(agg_funcs).reset_index()
+    fig,ax = plt.subplots(figsize=(4,5))
+    if sz_level:
+        model = smf.mixedlm(f"{agreement} ~ C(spont)", dat, groups="patient")
+        result = model.fit()
+        print(result.summary())
+        print(result.pvalues)
+        plot_data = dat
+        # plt.title(f"Seizure-Level Seizure{annot_type} Similarity")
+
+    else:
+        plot_data = pt_data
+        _,p = sc.stats.wilcoxon(pt_data[~pt_data.spont].sort_values('patient')[agreement],pt_data[pt_data.spont].sort_values('patient')[agreement])
+        if binary:
+            cont = pd.crosstab(pt_data.spont,pt_data[agreement])
+            res = sc.stats.chi2_contingency(cont)
+            p = res.pvalue
+            print(res)
+            fig1,ax1 = plt.subplots()
+            sns.heatmap(cont,annot=True,robust=True,
+                        xticklabels=True,yticklabels=True,
+                        cmap=sns.light_palette("seagreen", as_cmap=True),
+                        ax=ax1,
+                        cbar=False)
+            ax1.set_yticks([0.5,1.5],["Stim-Spont","Spont-Spont"])
+            ax1.set_xlabel("Region Agreement?")
+            ax1.set_ylabel("")
+            fig1.savefig(ospj(figpath,"one_onset_region_boxes.pdf"))
+        d = cohens_d(pt_data[~pt_data.spont][agreement],pt_data[pt_data.spont][agreement])
+        # print(f"Paired t-test - p: {p}, d: {d}")
+        # ax.set_title(f"Patient-Level Seizure{annot_type} Similarity")
+
+    ax = sns.pointplot(data=plot_data,x="spont",y=agreement,
+                errorbar=None,
+                markers="_",
+                linestyles="none",
+                palette=palette[:2],
+                estimator=np.median,
+                linewidth=4,
+                markersize=45,
+                ax=ax)
+    # plt.setp(ax.lines, linewidth=20)
+    sns.swarmplot(data=plot_data,x="spont",y=agreement,
+                alpha=.7,
+                palette = palette[:2],
+                ax=ax
+                # hue='patient'
+                )
+    if annot_stats:
+        annotator = Annotator(ax,[(True,False)],data=plot_data,x='spont',y=agreement)
+        annotator.configure(test='Wilcoxon',
+        loc='outside',
+        text_format='star',
+        fontsize=14,
+        pvalue_thresholds=[[1e-4, "****"], [1e-3, "***"],
+                        [1e-2, "**"], [0.05, "*"],[1, "ns"]])
+        annotator.apply_and_annotate()
+
+    plt.ylim([-0.25,1.15])
+    sns.despine()
+    ax.set_xticks([0,1],["Stim Induced-\nSpontaneous","Spontaneous-\nSpontaneous"])
+    ax.set_xlabel('')
+    # ax.set_ylabel(f"Electrographic Similarity ({agreement})")
+    ax.set_ylabel('Onset Similarity ($\phi$)')
+    x_spont = plot_data[plot_data.spont][agreement]
+    x_stim = plot_data[~plot_data.spont][agreement]
+
+    print(f"Spontaneous: N = {len(x_spont)} {x_spont.median():.2f} [{np.percentile(x_spont,25,method='nearest'):.2f}, {np.percentile(x_spont,75,method='nearest'):.2f}]")
+    print(f"Stim: N = {len(x_stim)} {x_stim.median():.2f} [{np.percentile(x_stim,25,method='nearest'):.2f}, {np.percentile(x_stim,75,method='nearest'):.2f}]")
+
+
+    return fig,ax
+
+# %%
