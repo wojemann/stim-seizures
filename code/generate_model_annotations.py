@@ -17,7 +17,8 @@ from tqdm import tqdm
 from os.path import join as ospj
 from utils import *
 
-# Add custom processing utilities to path
+# Custom imports
+from config import Config
 
 def main():
     """
@@ -27,9 +28,7 @@ def main():
     and identifies predicted onset/spread channels for comparison with manual annotations.
     """
     # Load configuration and metadata
-    _, _, datapath, prodatapath, metapath, _, patient_table, _, _ = load_config(
-        ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code', 'config.json'), None
-    )
+    _, _, datapath, prodatapath, metapath, _, patient_table, _, _ = Config.deal()
 
     # Load seizure information and consensus annotations
     seizures_df = pd.read_csv(ospj(metapath, "stim_seizure_information_BIDS.csv"))
