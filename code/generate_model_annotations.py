@@ -28,7 +28,7 @@ def main():
     and identifies predicted onset/spread channels for comparison with manual annotations.
     """
     # Load configuration and metadata
-    _, _, datapath, prodatapath, metapath, _, patient_table, _, _ = Config.deal()
+    datapath, prodatapath, metapath, patient_table = Config.deal(['datapath','prodatapath','metapath','patient_table'])
 
     # Load seizure information and consensus annotations
     seizures_df = pd.read_csv(ospj(metapath, "stim_seizure_information_BIDS.csv"))

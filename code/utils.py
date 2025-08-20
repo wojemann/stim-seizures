@@ -29,9 +29,9 @@ It has the following functions:
 - MovingWinClips
 - dice_score
 - set_seed
-- load_config
 - in_parallel
 - calculate_seizure_similarity
+- calculate_spread_similarity
 - plot_seizure_similarity
 """
 # %%
@@ -2069,80 +2069,6 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     random.seed(seed)
-
-def load_config(config_path,flag='HUP'):
-    """
-    Load configuration file and set up analysis environment with plotting parameters.
-    
-    This function loads a JSON configuration file containing paths, patient information,
-    and analysis parameters. It also sets up matplotlib plotting parameters for 
-    consistent figure styling across the analysis pipeline.
-    
-    Args:
-        config_path (str): Path to the JSON configuration file
-        flag (str, optional): Patient cohort filter ('HUP' or 'CHOP'). Defaults to 'HUP'.
-        
-    Returns:
-        tuple: Configuration data and patient information:
-            - usr: iEEG.org username
-            - passpath: Path to iEEG.org password file
-            - datapath: Path to raw data directory
-            - prodatapath: Path to processed data directory  
-            - metapath: Path to metadata directory
-            - figpath: Path to figures directory
-            - patient_table: Filtered DataFrame of patient information
-            - rid_hup: DataFrame mapping HUP IDs to RIDs
-            - pt_list: Array of patient IDs
-            
-    Configuration file structure:
-        - paths: Dictionary with data directory paths and credentials
-        - patients: List of patient information dictionaries
-        
-    Plotting parameters set:
-        - Default colormap: 'magma'
-        - Font sizes: 14pt labels, 16pt titles
-        - Line widths: 2pt default
-        - Tick sizes and widths for publication quality
-        
-    Example:
-        >>> usr, pwd_path, raw_dir, proc_dir, meta_dir, fig_dir, patients, mapping, pt_ids = load_config('config.json', 'HUP')
-        >>> # Environment now configured for HUP patient analysis
-    """
-    plt.rcParams['image.cmap'] = 'magma'
-
-    plt.rcParams['xtick.labelsize'] = 14
-    plt.rcParams['ytick.labelsize'] = 14
-    plt.rcParams['axes.linewidth'] = 2
-    plt.rcParams['axes.titlesize'] = 16
-    plt.rcParams['axes.labelsize'] = 14
-    plt.rcParams['lines.linewidth'] = 2
-
-    plt.rcParams['xtick.major.size'] = 5  # Change to your desired major tick size
-    plt.rcParams['ytick.major.size'] = 5  # Change to your desired major tick size
-    plt.rcParams['xtick.minor.size'] = 3   # Change to your desired minor tick size
-    plt.rcParams['ytick.minor.size'] = 3   # Change to your desired minor tick size
-
-    plt.rcParams['xtick.major.width'] = 2  # Change to your desired major tick width
-    plt.rcParams['ytick.major.width'] = 2  # Change to your desired major tick width
-    plt.rcParams['xtick.minor.width'] = 1  # Change to your desired minor tick width
-    plt.rcParams['ytick.minor.width'] = 1  # Change to your desired minor tick width
-    
-    with open(config_path,'r') as f:
-        CONFIG = json.load(f)
-    usr = CONFIG["paths"]["iEEG_USR"]
-    passpath = CONFIG["paths"]["iEEG_PWD"]
-    datapath = CONFIG["paths"]["RAW_DATA"]
-    prodatapath = CONFIG["paths"]["PROCESSED_DATA"]
-    figpath = CONFIG["paths"]["FIGURES"]
-    metapath = CONFIG["paths"]["METADATA"]
-    patient_table = pd.DataFrame(CONFIG["patients"]).sort_values('ptID').reset_index(drop=True)
-    if flag == 'HUP':
-        patient_table = patient_table[patient_table.ptID.apply(lambda x: x[:3]) == 'HUP']
-    elif flag == 'CHOP':
-        patient_table = patient_table[patient_table.ptID.apply(lambda x: x[:4]) == 'CHOP']
-    rid_hup = pd.read_csv(ospj(metapath,'rid_hup.csv'))
-    pt_list = patient_table.ptID.to_numpy()
-    return usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list
 
 ########################### OS Utils ###########################
 

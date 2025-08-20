@@ -60,7 +60,7 @@ def apply_mcc(row):
     return row
 
 # Load configuration and data paths
-usr, passpath, datapath, prodatapath, metapath, figpath, patient_table, rid_hup, pt_list = Config.deal()
+prodatapath = Config.deal('prodatapath')
 
 # Load human annotations with consensus annotation already created
 annotations_df = pd.read_pickle(ospj(prodatapath, "threshold_tuning_consensus_v2.pkl"))

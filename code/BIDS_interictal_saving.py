@@ -19,7 +19,8 @@ import mne
 from mne_bids import BIDSPath, write_raw_bids
 
 # Loading CONFIG - get paths and patient information
-usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
+from config import Config
+usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = Config.deal()
 
 # Setting Seed for reproducibility
 np.random.seed(171999)

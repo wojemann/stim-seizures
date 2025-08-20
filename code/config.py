@@ -70,16 +70,28 @@ class Config:
     ]
     
     @classmethod
-    def deal(cls, flag=None):
+    def deal(cls, attrs=None, flag=None):
         """
         Return all configuration data similar to load_config function.
         
         Args:
             flag (str): Patient cohort filter ('HUP' or 'CHOP'). Defaults to None.
+            attrs (iterable): List/tuple of attribute names to return. If None, returns all.
+                             Available: 'usr', 'passpath', 'datapath', 'prodatapath', 
+                             'metapath', 'figpath', 'patient_table', 'rid_hup', 'pt_list'
             
         Returns:
-            tuple: (usr, passpath, datapath, prodatapath, metapath, figpath, 
-                   patient_table, rid_hup, pt_list)
+            tuple: If attrs is None: (usr, passpath, datapath, prodatapath, metapath, figpath, 
+                                    patient_table, rid_hup, pt_list)
+                   If attrs provided: tuple of requested attributes in specified order
+                   
+        Examples:
+            # Get all attributes
+            usr, passpath, datapath, prodatapath, metapath, figpath, patient_table, rid_hup, pt_list = Config.deal()
+            
+            # Get only specific attributes
+            usr, metapath, figpath = Config.deal(attrs=['usr', 'metapath', 'figpath'])
+            datapath, patient_table = Config.deal('HUP', ['datapath', 'patient_table'])
         """
         # Process patient data
         patient_table = pd.DataFrame(cls._patients).sort_values('ptID').reset_index(drop=True)
@@ -95,6 +107,40 @@ class Config:
             rid_hup = pd.DataFrame(columns=['hupsubjno','record_id'])
         pt_list = patient_table.ptID.to_numpy()
         
+        # Create mapping of all available attributes
+        all_attrs = {
+            'usr': cls.usr,
+            'passpath': cls.passpath,
+            'datapath': cls.datapath,
+            'prodatapath': cls.prodatapath,
+            'metapath': cls.metapath,
+            'figpath': cls.figpath,
+            'patient_table': patient_table,
+            'rid_hup': rid_hup,
+            'pt_list': pt_list
+        }
+        
+        # If specific attributes requested, return only those
+        if attrs is not None:
+            try:
+                # Handle both strings and iterables
+                if isinstance(attrs, str):
+                    attrs = [attrs]
+                
+                # Validate all requested attributes exist
+                invalid_attrs = [attr for attr in attrs if attr not in all_attrs]
+                if invalid_attrs:
+                    raise ValueError(f"Invalid attribute(s): {invalid_attrs}. "
+                                   f"Available: {list(all_attrs.keys())}")
+                
+                # Return requested attributes in specified order
+                result = tuple(all_attrs[attr] for attr in attrs)
+                return result[0] if len(result) == 1 else result
+                
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"attrs must be a string or iterable of attribute names. {e}")
+        
+        # Default: return all attributes in original order
         return (cls.usr, cls.passpath, cls.datapath, cls.prodatapath, 
                 cls.metapath, cls.figpath, patient_table, rid_hup, pt_list)
     
