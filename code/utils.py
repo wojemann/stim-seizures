@@ -7,13 +7,32 @@ It has the following functions:
 - get_channel_types
 - get_channel_labels
 - get_channel_coords
-
-Raises:
-    ValueError: _description_
-    ValueError: _description_
-
-Returns:
-    _type_: _description_
+- get_rpath
+- surgical_parcellation
+- surgical_parcelate
+- get_cnt_inventory
+- get_pt_coords
+- get_data_from_bids
+- _shade_y_ticks_background
+- plot_iEEG_data
+- make_surf_transforms
+- cohens_d
+- notch_filter
+- bandpass_filter
+- artifact_removal
+- detect_bad_channels
+- num_wins
+- bipolar_montage
+- ar_one
+- preprocess_for_detection
+- remove_scalp_electrodes
+- MovingWinClips
+- dice_score
+- set_seed
+- load_config
+- in_parallel
+- calculate_seizure_similarity
+- plot_seizure_similarity
 """
 # %%
 # pylint: disable-msg=C0103
@@ -45,15 +64,9 @@ import pandas as pd
 import numpy as np
 import torch
 
-from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
-from scipy.spatial.distance import pdist, squareform
-from scipy.optimize import minimize
-from scipy.integrate import simps
-import scipy.signal as sig
+from scipy.signal import sosfiltfilt, butter, filtfilt
+
 import scipy as sc
-from sklearn.preprocessing import normalize
-from sklearn.decomposition import NMF
-from sklearn.utils import resample
 
 import statsmodels.formula.api as smf
 
@@ -70,7 +83,23 @@ warnings.filterwarnings("ignore")
 ########################################## Data I/O ##########################################
 def _pull_iEEG(ds, start_usec, duration_usec, channel_ids):
     """
-    Pull data while handling iEEGConnectionError
+    Pull iEEG data with automatic retry logic to handle connection errors.
+    
+    This function attempts to retrieve iEEG data from a dataset with built-in error handling
+    and retry logic. It will retry up to 50 times with 1-second delays between attempts.
+    
+    Args:
+        ds: iEEG dataset object with get_data method
+        start_usec (int): Start time in microseconds
+        duration_usec (int): Duration in microseconds
+        channel_ids (list): List of channel indices to retrieve
+        
+    Returns:
+        numpy.ndarray: Retrieved iEEG data, or None if all retry attempts failed
+        
+    Notes:
+        - Logs error message if all 50 retry attempts fail
+        - Uses 1-second sleep between retry attempts
     """
     i = 0
     while True:
@@ -99,6 +128,42 @@ def get_iEEG_data(
     outputfile=None,
     force_pull = False
 ):
+    """
+    Retrieve iEEG data from the iEEG.org portal with flexible electrode selection.
+    
+    This function connects to iEEG.org, opens a dataset, and retrieves data for specified
+    time ranges and electrodes. It handles large data requests by automatically chunking
+    the data either temporally (for long time periods) or spatially (for many channels).
+    
+    Args:
+        username (str): iEEG.org username
+        password_bin_file (str): Path to file containing iEEG.org password
+        iEEG_filename (str): Name of the iEEG dataset on iEEG.org
+        start_time_usec (float): Start time in microseconds
+        stop_time_usec (float): Stop time in microseconds
+        select_electrodes (list, optional): List of electrode names or indices to include.
+            Can be strings (electrode names) or integers (electrode indices)
+        ignore_electrodes (list, optional): List of electrode names or indices to exclude.
+            Can be strings (electrode names) or integers (electrode indices)
+        outputfile (str, optional): Path to save the data as a pickle file
+        force_pull (bool): If True, continues even if some selected electrodes are missing
+        
+    Returns:
+        tuple: (pandas.DataFrame, float) containing:
+            - DataFrame with iEEG data (time x channels)
+            - Sampling frequency in Hz
+            
+    Notes:
+        - Automatically chunks data for large requests:
+            * Temporal chunking for clips > 120 seconds with < 100 channels
+            * Channel chunking for > 100 channels 
+        - Uses clean_labels() to standardize electrode names
+        - Retries connection up to 50 times with 1-second delays
+        
+    Raises:
+        ValueError: If dataset cannot be opened after 50 attempts
+        ValueError: If selected electrodes not found and force_pull=False
+    """
     start_time_usec = int(start_time_usec)
     stop_time_usec = int(stop_time_usec)
     duration = stop_time_usec - start_time_usec
@@ -229,15 +294,40 @@ def get_iEEG_data(
 
 
 def clean_labels(channel_li: list, pt: str) -> list:
-    """This function cleans a list of channels and returns the new channels
-
-    Args:
-        channel_li (list): _description_
-
-    Returns:
-        list: _description_
     """
-
+    Standardize and clean electrode channel labels for consistent naming across patients.
+    
+    This function standardizes electrode naming conventions by:
+    - Removing hyphens and standardizing grid names
+    - Extracting lead names and contact numbers using regex
+    - Applying patient-specific naming conventions and mappings
+    - Formatting contact numbers with zero-padding
+    
+    Args:
+        channel_li (list): List of raw channel labels from the iEEG dataset
+        pt (str): Patient identifier (e.g., 'HUP75_phaseII', 'sub-RID0065')
+        
+    Returns:
+        list: List of cleaned and standardized channel labels
+        
+    Notes:
+        - Uses regex pattern to extract lead name and contact number
+        - Applies patient-specific transformations for known naming inconsistencies
+        - Standardizes contact numbers to 2-digit zero-padded format (e.g., "01", "02")
+        - Handles special cases like bipolar references and grid electrodes
+        
+    Patient-specific transformations:
+        - HUP75: "Grid" -> "G"
+        - HUP78: "Grid" -> "LG" 
+        - HUP86: Multiple lead name mappings
+        - HUP93: Grid electrode standardization
+        - HUP89: Grid and lead name mappings
+        - HUP99: "G" -> "RG"
+        - HUP112: Preserves bipolar reference format
+        - HUP116: Removes hyphens
+        - HUP123: Lead name mappings for "RS" and "GTP"
+        - HUP189: "LG" -> "LGr"
+    """
     new_channels = []
     for i in channel_li:
         i = i.replace("-", "")
@@ -323,18 +413,26 @@ def clean_labels(channel_li: list, pt: str) -> list:
 def get_apn_dkt(
     fname="/mnt/sauce/littlab/users/pattnaik/ictal_patterns/data/metadata/apn_dkt_labels.txt",
 ) -> dict:
-    """Function to get antsPyNet DKT labels from text file
-
-    Args:
-        fname (str): AntsPyNet DKT labels file name
-
-    Raises:
-        ValueError: _description_
-
-    Returns:
-        dict: _description_
     """
-
+    Load antsPyNet DKT (Desikan-Killiany-Tourville) atlas labels from text file.
+    
+    Parses a text file containing DKT atlas region labels and their corresponding
+    numerical IDs, returning a dictionary mapping region IDs to region names.
+    
+    Args:
+        fname (str): Path to the antsPyNet DKT labels text file
+        
+    Returns:
+        dict: Dictionary mapping region IDs (int) to region names (str)
+        
+    Notes:
+        - Expects text file format with lines starting with "Label"
+        - Parses lines like "Label 1001: Left-cerebral-white-matter"
+        - Used for mapping segmentation values to anatomical region names
+        
+    Raises:
+        ValueError: If file format is unexpected or cannot be parsed
+    """
     with open(fname, "r") as f:
         lines = f.readlines()
 
@@ -350,14 +448,31 @@ def get_apn_dkt(
 
 
 def check_channel_types(ch_list, threshold=24):
-    """Function to check channel types
-
+    """
+    Classify electrode channels by type (ECoG, sEEG, EEG, ECG, misc) based on naming patterns.
+    
+    Analyzes channel names to determine electrode types using lead name patterns and
+    contact counts. Channels with many contacts (>threshold) are classified as ECoG,
+    while those with fewer contacts are classified as sEEG.
+    
     Args:
-        ch_list (_type_): _description_
-        threshold (int, optional): _description_. Defaults to 15.
-
+        ch_list (list): List of channel names to classify
+        threshold (int, optional): Contact count threshold for ECoG vs sEEG classification. 
+            Defaults to 24.
+            
     Returns:
-        _type_: _description_
+        pandas.DataFrame: DataFrame with columns:
+            - name: Original channel name
+            - lead: Lead/electrode name (e.g., "LG", "RH")
+            - contact: Contact number on the lead
+            - type: Channel type ("ecog", "seeg", "eeg", "ecg", "misc")
+            
+    Notes:
+        - Uses regex to extract lead names and contact numbers
+        - EEG channels identified by standard 10-20 system names (C, Cz, F, etc.)
+        - ECG channels identified by "ECG" or "EKG" in name
+        - ECoG vs sEEG distinction based on contact count per lead
+        - Channels that don't match patterns are classified as "misc"
     """
     ch_df = []
     for i in ch_list:
@@ -396,82 +511,31 @@ def check_channel_types(ch_list, threshold=24):
             ch_df.loc[group.index.to_list(), "type"] = "seeg"
     return ch_df
 
-
-def unnesting(df, explode, axis):
-    """
-    code that expands lists in a column in a dataframe.
-    """
-    if axis == 1:
-        idx = df.index.repeat(df[explode[0]].str.len())
-        df1 = pd.concat(
-            [pd.DataFrame({x: np.concatenate(df[x].values)}) for x in explode], axis=1
-        )
-        df1.index = idx
-
-        return df1.join(df.drop(explode, 1), how="right")
-    else:
-        df1 = pd.concat(
-            [
-                pd.DataFrame(df[x].tolist(), index=df.index).add_prefix(x)
-                for x in explode
-            ],
-            axis=1,
-        )
-        return df1.join(df.drop(explode, 1), how="right")
-
-
-def load_rid_forjson(rid):
-    """
-    load_rid_forjson loads the DKTantspynet output from IEEG_recon
-    """
-    dkt_directory = glob(
-        f"/mnt/sauce/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv"
-    )[0]
-    brain_df = pd.read_csv(dkt_directory, index_col=0)
-    brain_df["name"] = brain_df["name"].astype(str) + "-CAR"
-    return brain_df
-
-
-def label_fix(rid, threshold=0.25, return_old=False, df=None):
-    """
-    label_fix reassigns labels overlapping brain regions to "empty labels" in our DKTantspynet output from IEEG_recon
-    input:  rid - name of patient. example: 'sub-RID0031'
-            data_directory - directory containing CNT_iEEG_BIGS folder. (must end in '/')
-            threshold - arbitrary threshold that r=2mm surround of electrode must overlap with a brain region. default: threshold = 25%, Brain region has a 25% or more overlap.
-    output: relabeled_df - a dataframe that contains 2 extra columns showing the second most overlapping brain region and the percent of overlap.
-    """
-    if df is not None:
-        brain_df = df
-    else:
-        brain_df = load_rid_forjson(rid)
-    json_labels = glob(
-        f"/mnt/sauce/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json"
-    )[0]
-    workinglabels = pd.read_json(json_labels, lines=True)
-
-    empty = workinglabels[workinglabels["label"] == "EmptyLabel"]
-    empty = unnesting(empty, ["labels_sorted", "percent_assigned"], axis=0)
-    empty = empty[np.isnan(empty["percent_assigned1"]) == False]
-    changed = empty[empty["percent_assigned1"] >= threshold]
-
-    brain_df["name"] = brain_df["name"].str.replace("-CAR", "")
-    relabeled_df = brain_df.merge(
-        changed[["labels_sorted1", "percent_assigned1"]],
-        left_on=brain_df["name"],
-        right_on=changed["name"],
-        how="left",
-        indicator=True,
-    )
-    relabeled_df["final_label"] = relabeled_df["labels_sorted1"].fillna(
-        relabeled_df["label"]
-    )
-    # relabeled_df['name'] = relabeled_df['name'].astype(str) + '-CAR' #added for this version for our analysis
-
-    if return_old:
-        return relabeled_df, brain_df
-    return relabeled_df
-
 def electrode_wrapper(pt,rid_hup,datapath):
+    """
+    Wrapper function to load electrode localizations for either HUP or CHOP patients.
+    
+    This function routes electrode localization loading to the appropriate method
+    based on patient type (HUP vs CHOP), handling different data formats and
+    directory structures for each hospital system.
+    
+    Args:
+        pt (str): Patient identifier (e.g., "HUP075" or "CHOP001")
+        rid_hup (pandas.DataFrame): Mapping table between HUP subject numbers and RIDs
+        datapath (str): Base path to patient data directories
+        
+    Returns:
+        tuple: (electrode_localizations, electrode_regions) where:
+            - electrode_localizations: DataFrame with matter type labels (gray/white matter)
+            - electrode_regions: DataFrame with anatomical region labels
+            
+    Notes:
+        - For HUP patients: Uses IEEG_recon pipeline output with optimize_localizations()
+        - For CHOP patients: Uses Excel files with choptimize_localizations()
+        - Handles RID lookup for HUP patients using rid_hup mapping table
+        - Searches multiple possible directory structures for recon data
+        - Returns standardized format regardless of source data format
+    """
     if pt[:3] == 'HUP':
         hup_no = pt[3:]
         rid = rid_hup[rid_hup.hupsubjno == hup_no].record_id.to_numpy()[0]
@@ -495,8 +559,35 @@ def electrode_wrapper(pt,rid_hup,datapath):
         return electrode_localizations,electrode_regions
 
 def optimize_localizations(path_to_recon,RID):
-    # /mnt/leif/littlab/data/Human_Data/recon/BIDS_penn/
-    # python /mnt/leif/littlab/data/Human_Data/recon/code/run_penn_recons.py
+    """
+    Optimize electrode localization labels using tissue type and anatomical probabilities.
+    
+    This function refines electrode localizations from the IEEG_recon pipeline by:
+    1. Loading probability data for both tissue types (atropos) and brain regions (DKT)
+    2. Applying probabilistic thresholds to assign more accurate labels
+    3. Prioritizing gray matter over other tissue types when overlap exceeds 5%
+    4. Ensuring white matter electrodes are properly labeled regardless of region
+    
+    Args:
+        path_to_recon (str): Path to IEEG_recon module3 output directory
+        RID (str): Patient RID number (e.g., "0031")
+        
+    Returns:
+        tuple: (modified_atropos_df, modified_dkt_df) where:
+            - modified_atropos_df: DataFrame with optimized tissue type labels
+            - modified_dkt_df: DataFrame with optimized anatomical region labels
+            
+    Notes:
+        - Uses 5% overlap threshold for tissue type assignment
+        - Prioritizes gray matter > white matter > other tissue types
+        - Preserves white matter labels even in anatomical regions
+        - Handles both line-delimited and standard JSON formats
+        - Uses helper functions _apply_matter_function and _apply_region_function
+        
+    File inputs:
+        - *_atlas-atropos_*_coordinates.json: Tissue probability data
+        - *_atlas-DKTantspynet_*_coordinates.json: Anatomical region probability data
+    """
     try:
         atropos_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
         dkt_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
@@ -505,6 +596,12 @@ def optimize_localizations(path_to_recon,RID):
         atropos_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json')
 
     def _apply_matter_function(x):
+        """
+        Apply tissue type assignment based on probability thresholds.
+        
+        Helper function that assigns tissue labels (gray matter, white matter)
+        based on overlap probabilities above 5% threshold.
+        """
         # look in labels sorted and see if it contains gray matter
         # if gray matter is greater than 5% then set label to gray matter
         x = pd.DataFrame(x).transpose()
@@ -520,6 +617,12 @@ def optimize_localizations(path_to_recon,RID):
         
         return x
     def _apply_region_function(x):
+        """
+        Apply anatomical region assignment based on probability thresholds.
+        
+        Helper function that assigns anatomical region labels based on
+        overlap probabilities above 5% threshold, excluding EmptyLabel.
+        """
         # look in labels sorted and see if it contains gray matter
         # if gray matter is greater than 5% then set label to gray matter
         x = pd.DataFrame(x).transpose()
@@ -539,6 +642,33 @@ def optimize_localizations(path_to_recon,RID):
     return modified_atropos_df,modified_dkt_df
 
 def choptimize_localizations(recon_path,chopid):
+    """
+    Load and standardize electrode localizations for CHOP (Children's Hospital) patients.
+    
+    This function processes electrode localization data from Excel files used at CHOP,
+    converting the format to match the standardized output format used for HUP patients.
+    
+    Args:
+        recon_path (str): Path to the Excel file containing electrode locations
+        chopid (str): CHOP patient identifier
+        
+    Returns:
+        tuple: (electrode_locals, electrode_regions) where:
+            - electrode_locals: DataFrame with tissue type information (gray/white matter)
+            - electrode_regions: DataFrame with anatomical region information
+            
+    Notes:
+        - Reads Excel file with patient-specific sheet name
+        - Standardizes channel names using clean_labels()
+        - Maps "Unknown" brain areas to "EmptyLabel" for consistency
+        - Creates separate DataFrames for tissue types and anatomical regions
+        - Standardizes column names and formats to match HUP pipeline output
+        
+    Column mappings:
+        - "grey"/"white" matter -> "gray matter"/"white matter" labels
+        - brain_area -> anatomical region labels
+        - Preserves coordinate information (x, y, z)
+    """
     electrode_locals = pd.read_excel(recon_path,f'{chopid}_locations')
     electrode_locals.loc[:,'name'] = clean_labels(electrode_locals.full_label,chopid)
     electrode_locals.loc[:,'index'] = pd.NA
@@ -554,6 +684,24 @@ def choptimize_localizations(recon_path,chopid):
     return electrode_locals,electrode_regions
 
 def get_rpath(prodatapath,pt):
+    """
+    Generate the file path for electrode localization pickle files based on patient type.
+    
+    This function returns the appropriate file path for saved electrode localization
+    data, using different naming conventions for CHOP vs other patients.
+    
+    Args:
+        prodatapath (str): Base path to processed data directory
+        pt (str): Patient identifier
+        
+    Returns:
+        str: Full file path to the electrode localization pickle file
+        
+    Notes:
+        - CHOP patients use "electrode_localizations_CHOPR.pkl"
+        - All other patients use "electrode_localizations_dkt.pkl"
+        - Used for consistent file naming across different patient types
+    """
     if pt[:3] == 'CHO':
         region_path = ospj(prodatapath,pt,'electrode_localizations_CHOPR.pkl')
     else:
@@ -561,6 +709,32 @@ def get_rpath(prodatapath,pt):
     return region_path
 
 def surgical_parcellation(electrode_regions):
+    """
+    Assign electrodes to clinically relevant surgical regions based on anatomical labels.
+    
+    This function groups detailed anatomical region labels into broader surgical categories
+    that are clinically meaningful for epilepsy surgery planning. It provides a simplified
+    anatomical classification focused on surgical targets.
+    
+    Args:
+        electrode_regions (pandas.DataFrame): DataFrame with electrode anatomical labels
+        
+    Returns:
+        pandas.DataFrame: Modified DataFrame with surgical region labels replacing
+            detailed anatomical labels
+            
+    Surgical region mappings:
+        - "EmptyLabel": Areas with no clear anatomical assignment or white matter
+        - "left/right mesial temporal": Amygdala and hippocampus regions
+        - "left/right temporal neocortex": Temporal, fusiform, entorhinal, parahippocampal
+        - "left/right other neocortex": All other cortical regions
+        
+    Notes:
+        - Preserves laterality (left vs right) from original labels
+        - Handles NaN/float values by converting to "EmptyLabel"
+        - Case-insensitive string matching for robust label assignment
+        - Modifies DataFrame in-place and returns the modified version
+    """
     for i,row in electrode_regions.iterrows():
         label = row.label
         if isinstance(label,float):
@@ -587,6 +761,25 @@ def surgical_parcellation(electrode_regions):
     return electrode_regions
     
 def surgical_parcelate(region_list):
+    """
+    Convert a list of anatomical region labels to surgical region categories.
+    
+    This function applies the same surgical parcellation logic as surgical_parcellation()
+    but operates on a simple list of region names rather than a full DataFrame.
+    
+    Args:
+        region_list (list): List of anatomical region label strings
+        
+    Returns:
+        list: List of corresponding surgical region labels
+        
+    See surgical_parcellation() for detailed mapping rules.
+        
+    Notes:
+        - Functional equivalent to surgical_parcellation() for list inputs
+        - Useful when you only need to convert labels without electrode coordinates
+        - Handles the same edge cases (NaN values, case sensitivity)
+    """
     surgical_labels = []
     for label in region_list:
         if isinstance(label,float):
@@ -617,18 +810,96 @@ BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_b
 
 
 def get_cnt_inventory(bids_inventory=BIDS_INVENTORY):
+    """
+    Load and process the CNT iEEG BIDS dataset inventory.
+    
+    This function reads a CSV file that tracks which datasets and processing steps
+    are available for each patient in the CNT iEEG BIDS directory structure.
+    
+    Args:
+        bids_inventory (str, optional): Path to the BIDS inventory CSV file.
+            Defaults to global BIDS_INVENTORY constant.
+            
+    Returns:
+        pandas.DataFrame: Boolean DataFrame indicating data availability, where:
+            - Rows represent patients/datasets
+            - Columns represent different data types or processing steps
+            - Values are True/False indicating availability ("yes"/"no" in CSV)
+            
+    Notes:
+        - Converts string values ("yes"/"no") to boolean (True/False)
+        - Used to check data availability before processing
+        - Helps identify which patients have complete datasets
+    """
     inventory = pd.read_csv(bids_inventory, index_col=0)
     inventory = inventory == "yes"
     return inventory
 
 
 def get_pt_coords(pt):
+    """
+    Load electrode coordinates for a specific patient from BIDS directory structure.
+    
+    This function locates and loads the DKT antsPyNet coordinate file for a patient
+    from the standardized BIDS derivatives directory structure.
+    
+    Args:
+        pt (str): Patient identifier (e.g., "sub-RID0031")
+        
+    Returns:
+        pandas.DataFrame: DataFrame containing electrode coordinates and anatomical labels
+        
+    Notes:
+        - Searches in BIDS_DIR/pt/derivatives/ieeg_recon/module3/
+        - Uses glob to find DKT coordinate CSV files 
+        - Assumes standardized BIDS naming convention for coordinate files
+        - Returns DataFrame with electrode positions and DKT atlas labels
+        
+    Raises:
+        IndexError: If no coordinate file found for the patient
+        FileNotFoundError: If BIDS directory structure doesn't exist
+    """
     coords_path = glob(
         ospj(BIDS_DIR, pt, "derivatives", "ieeg_recon", "module3", "*DKTantspynet*csv")
     )[0]
     return pd.read_csv(coords_path, index_col=0)
 
 def get_data_from_bids(root,subject,task_key,run=None,return_path=False,verbose=0):
+    """
+    Load iEEG data from BIDS-formatted dataset with automatic task and run detection.
+    
+    This function provides a high-level interface to load iEEG data from BIDS-structured
+    datasets using MNE-BIDS. It automatically identifies the appropriate task and run
+    based on partial string matching and returns both the data and sampling frequency.
+    
+    Args:
+        root (str): Path to the BIDS dataset root directory
+        subject (str): Subject identifier (without "sub-" prefix)
+        task_key (str): Partial task name to search for (e.g., "rest" matches "task-rest")
+        run (str, optional): Specific run identifier. If None, uses first available run.
+        return_path (bool, optional): If True, also returns BIDS path components.
+            Defaults to False.
+        verbose (int, optional): MNE verbosity level. Defaults to 0 (quiet).
+        
+    Returns:
+        tuple: Depending on return_path parameter:
+            - If return_path=False: (data_df, fs) where:
+                * data_df: DataFrame with iEEG data (channels as columns)
+                * fs: Sampling frequency in Hz
+            - If return_path=True: (data_df, fs, root, subject, task, run)
+                * Additional path components for reference
+                
+    Notes:
+        - Automatically filters out other subjects when searching for tasks/runs
+        - Uses first matching task that contains task_key substring
+        - Assumes session "clinical01" (standard for clinical iEEG data)
+        - Removes time column from MNE DataFrame output
+        - Calculates sampling frequency from time differences
+        
+    Example:
+        >>> data, fs = get_data_from_bids("/data/bids", "RID0031", "ictal")
+        >>> # Loads ictal task data for subject sub-RID0031
+    """
     # setting subject
     all_subjects = mne_bids.get_entity_vals(root,'subject')
     ignore_subjects = [s for s in all_subjects if s != subject]
@@ -653,14 +924,38 @@ def get_data_from_bids(root,subject,task_key,run=None,return_path=False,verbose=
     return data_df.drop('time',axis=1), int(fs)
 
 ################################################ Plotting and Visualization ################################################
-def shade_y_ticks_background(ax, y_ticks, colors, alpha=1):
+def _shade_y_ticks_background(ax, y_ticks, colors, alpha=1):
     """
-    Shades the background of a plot along the y-axis based on specified y-ticks and colors.
-
-    Parameters:
-        ax (matplotlib.axes.Axes): The axis object to modify.
-        y_ticks (list or array): The y-tick values.
-        colors (list or array): A list of colors corresponding to each y-tick. Use None for no shading.
+    Add colored background shading to a plot based on y-axis tick positions.
+    
+    This function creates horizontal colored bands behind plot data, with each band
+    centered on a y-tick position. Useful for visually grouping or highlighting
+    different data series in multi-channel plots.
+    
+    Args:
+        ax (matplotlib.axes.Axes): The axis object to modify
+        y_ticks (list or array): Y-tick values to center the shading bands on
+        colors (list, array, or str): Colors for each shading band. Can be:
+            - List of colors (one per y-tick)
+            - Single color string (applied to all y-ticks)
+            - None values skip shading for that y-tick
+        alpha (float, optional): Transparency level (0=transparent, 1=opaque). 
+            Defaults to 1.
+            
+    Notes:
+        - Shading extends halfway to adjacent y-ticks on each side
+        - For edge ticks, extends same distance as to nearest neighbor
+        - Uses axhspan() to create horizontal spans across full x-axis width
+        - Automatically sorts y-ticks to ensure proper ordering
+        
+    Raises:
+        ValueError: If y_ticks and colors arrays have different lengths (when colors is a list)
+        
+    Example:
+        >>> fig, ax = plt.subplots()
+        >>> y_positions = [0, 1, 2, 3]
+        >>> channel_colors = ['red', 'blue', None, 'green']  # No shading for channel 2
+        >>> shade_y_ticks_background(ax, y_positions, channel_colors, alpha=0.3)
     """
     if isinstance(colors,str):
         colors = [colors]*len(y_ticks)
@@ -706,16 +1001,44 @@ def plot_iEEG_data(
     fig_size=None,
     minmax=False
 ):
-    """_summary_
-
+    """
+    Create a multi-channel iEEG data plot with customizable styling and layout.
+    
+    This function generates a standard "waterfall" or "butterfly" plot for multi-channel
+    iEEG data, where each channel is plotted at a different y-offset for easy visualization.
+    Supports various customization options including color coding, background shading,
+    and automatic scaling.
+    
     Args:
-        data (Union[pd.DataFrame, np.ndarray]): _description_
-        t (np.ndarray): _description_
-        colors (_type_, optional): _description_. Defaults to None.
-        dr (_type_, optional): _description_. Defaults to None.
-
+        data (pandas.DataFrame or numpy.ndarray): iEEG data matrix
+            - If DataFrame: Uses column names as channel labels
+            - Shape should be (time_points, channels) or (channels, time_points)
+        fs (float, optional): Sampling frequency in Hz. Required if t is None.
+        t (numpy.ndarray, optional): Time vector. If None, generated from fs.
+        t_offset (float, optional): Time offset to add to time vector. Defaults to 0.
+        colors (list, optional): List of colors for y-tick labels (channel names).
+        plot_color (str, optional): Color for the data traces. Defaults to 'k' (black).
+        shade_color (list, optional): Colors for background shading. See shade_y_ticks_background().
+        shade_alpha (float, optional): Alpha transparency for background shading. Defaults to 0.3.
+        empty (bool, optional): If True, removes plot borders and ticks for clean appearance.
+        dr (float, optional): Vertical spacing between channels. If None, auto-calculated.
+        fig_size (tuple, optional): Figure size (width, height). If None, auto-calculated.
+        minmax (bool, optional): If True, z-score normalizes the data. Defaults to False.
+        
     Returns:
-        _type_: _description_
+        tuple: (fig, ax) - matplotlib figure and axis objects
+        
+    Notes:
+        - Automatically transposes data if dimensions don't match time vector
+        - Auto-calculates figure size based on duration and channel count
+        - Channel labels appear as y-tick labels (if DataFrame input)
+        - Supports both normalized and raw data display
+        - Can overlay colored background shading for channel grouping
+        
+    Example:
+        >>> data = pd.DataFrame(ieeg_data, columns=channel_names)
+        >>> fig, ax = plot_iEEG_data(data, fs=500, colors=channel_colors)
+        >>> plt.show()
     """
     if minmax:
         data = data.apply(sc.stats.zscore)
@@ -801,6 +1124,46 @@ def plot_iEEG_data(
 
 
 def make_surf_transforms(sub_rid=None, overwrite=False, path=None):
+    """
+    Generate FreeSurfer surface files with proper coordinate transformations for visualization.
+    
+    This function creates transformed surface meshes from FreeSurfer output that can be
+    used for electrode visualization and brain surface rendering. It handles the complex
+    coordinate transformations between FreeSurfer's internal coordinate systems and
+    scanner coordinates.
+    
+    Args:
+        sub_rid (str, optional): Subject RID (e.g., "sub-RID0031"). Either this or path required.
+        overwrite (bool, optional): If True, regenerates files even if they exist. Defaults to False.
+        path (str, optional): Direct path to FreeSurfer directory. Either this or sub_rid required.
+        
+    Returns:
+        list: List of file paths to the generated transformed surface files:
+            - Combined left+right hemisphere surface
+            - Right hemisphere surface  
+            - Left hemisphere surface
+            
+    Notes:
+        - Reads FreeSurfer pial surfaces (lh.pial, rh.pial)
+        - Applies vox2ras and TkRAS coordinate transformations
+        - Creates combined bilateral surface for easier visualization
+        - Saves transformed surfaces with "_transform" suffix
+        - Requires FreeSurfer-processed T1 MRI with surface reconstruction
+        
+    Coordinate transformations:
+        1. Loads surfaces in FreeSurfer TkRAS coordinates
+        2. Converts to scanner RAS coordinates using affine transforms
+        3. Saves surfaces compatible with electrode coordinate system
+        
+    Generated files:
+        - lh+rh_transform.pial: Combined bilateral surface
+        - rh_transform.pial: Right hemisphere only
+        - lh_transform.pial: Left hemisphere only
+        
+    Example:
+        >>> surf_files = make_surf_transforms("sub-RID0031")
+        >>> # Use surf_files for electrode visualization
+    """
     names = ["lh+rh_transform.pial", "rh_transform.pial", "lh_transform.pial"]
     assert (
         sub_rid is not None or path is not None
@@ -848,6 +1211,42 @@ def make_surf_transforms(sub_rid=None, overwrite=False, path=None):
     return return_paths
 
 def cohens_d(group1, group2):
+    """
+    Calculate Cohen's d effect size between two groups.
+    
+    Cohen's d is a standardized measure of effect size that indicates the magnitude
+    of difference between two groups in terms of standard deviations. It's useful
+    for interpreting the practical significance of statistical differences.
+    
+    Args:
+        group1 (array-like): First group of values
+        group2 (array-like): Second group of values
+        
+    Returns:
+        float: Cohen's d effect size
+        
+    Effect size interpretation:
+        - Small effect: |d| ≈ 0.2
+        - Medium effect: |d| ≈ 0.5  
+        - Large effect: |d| ≈ 0.8
+        - Positive d: group1 mean > group2 mean
+        - Negative d: group1 mean < group2 mean
+        
+    Notes:
+        - Uses pooled standard deviation for denominator
+        - Applies Bessel's correction (ddof=1) for sample standard deviation
+        - Assumes approximately normal distributions for interpretation
+        
+    Formula:
+        d = (mean1 - mean2) / pooled_std
+        where pooled_std = sqrt(((n1-1)*std1² + (n2-1)*std2²) / (n1+n2-2))
+        
+    Example:
+        >>> group1 = [1, 2, 3, 4, 5]
+        >>> group2 = [3, 4, 5, 6, 7] 
+        >>> effect_size = cohens_d(group1, group2)
+        >>> print(f"Cohen's d: {effect_size:.3f}")
+    """
     # Calculating means of the two groups
     mean1, mean2 = np.mean(group1), np.mean(group2)
      
@@ -860,16 +1259,39 @@ def cohens_d(group1, group2):
     d = (mean1 - mean2) / pooled_std
      
     return d
+
 ################################################ Preprocessing ################################################
 def notch_filter(data: np.ndarray, fs: float) -> np.array:
-    """_summary_
-
+    """
+    Apply notch filtering to remove 60Hz and 120Hz power line noise from iEEG data.
+    
+    This function removes electrical interference from power lines using bandstop filters
+    centered at 60Hz (fundamental frequency) and 120Hz (first harmonic). Uses 
+    zero-phase filtfilt for no temporal distortion.
+    
     Args:
-        data (np.ndarray): _description_
-        fs (float): _description_
-
+        data (numpy.ndarray): Input iEEG data array
+            - Shape: (channels, time_points) or (time_points, channels)
+        fs (float): Sampling frequency in Hz
+        
     Returns:
-        np.array: _description_
+        numpy.ndarray: Filtered data with same shape as input
+        
+    Notes:
+        - Uses 4th-order Butterworth bandstop filters
+        - Filter ranges: 58-62Hz and 118-122Hz  
+        - Zero-phase filtering preserves temporal relationships
+        - Applied along last axis (-1) by default
+        - Filters are applied sequentially (60Hz first, then 120Hz)
+        
+    Filter specifications:
+        - 60Hz notch: 58-62Hz stopband
+        - 120Hz notch: 118-122Hz stopband  
+        - Both use 4th-order Butterworth design
+        
+    Example:
+        >>> clean_data = notch_filter(raw_data, fs=500)
+        >>> # Removes 60Hz and 120Hz power line interference
     """
     # remove 60Hz noise
     # b, a = iirnotch(60, 15, fs)
@@ -886,17 +1308,43 @@ def notch_filter(data: np.ndarray, fs: float) -> np.array:
 
 
 def bandpass_filter(data: np.ndarray, fs: float, order=3, lo=1, hi=150) -> np.array:
-    """_summary_
-
+    """
+    Apply bandpass filtering to iEEG data to retain specific frequency ranges.
+    
+    This function applies a Butterworth bandpass filter to isolate frequency content
+    of interest while removing low-frequency drift and high-frequency noise.
+    Uses zero-phase filtering to preserve temporal relationships.
+    
     Args:
-        data (np.ndarray): _description_
-        fs (float): _description_
-        order (int, optional): _description_. Defaults to 3.
-        lo (int, optional): _description_. Defaults to 1.
-        hi (int, optional): _description_. Defaults to 120.
-
+        data (numpy.ndarray): Input iEEG data array
+            - Shape: (channels, time_points) or (time_points, channels)  
+        fs (float): Sampling frequency in Hz
+        order (int, optional): Filter order (higher = steeper rolloff). Defaults to 3.
+        lo (int, optional): Low-frequency cutoff in Hz. Defaults to 1.
+        hi (int, optional): High-frequency cutoff in Hz. Defaults to 150.
+        
     Returns:
-        np.array: _description_
+        numpy.ndarray: Bandpass filtered data with same shape as input
+        
+    Notes:
+        - Uses scipy.signal.butter for Butterworth filter design
+        - Zero-phase sosfiltfilt preserves phase relationships
+        - Applied along last axis (-1) by default
+        - Cutoff frequencies are -3dB points
+        - Higher order = steeper transition but more ripple
+        
+    Common frequency bands:
+        - Broadband: 1-150Hz (default)
+        - Clinical: 1-70Hz  
+        - Research: 0.5-500Hz
+        - Gamma: 30-100Hz
+        - High gamma: 70-150Hz
+        
+    Example:
+        >>> # Filter for high gamma band
+        >>> hg_data = bandpass_filter(data, fs=1000, lo=70, hi=150)
+        >>> # Filter for clinical analysis  
+        >>> clinical_data = bandpass_filter(data, fs=500, lo=1, hi=70)
     """
     # TODO: add causal function argument
     # TODO: add optional argument for order
@@ -908,17 +1356,48 @@ def bandpass_filter(data: np.ndarray, fs: float, order=3, lo=1, hi=150) -> np.ar
 def artifact_removal(
     data: np.ndarray, fs: float, discon=1 / 12, noise=15000, win_size=1
 ) -> np.ndarray:
-    """_summary_
-
+    """
+    Detect and mark artifacts in iEEG data using amplitude and noise thresholds.
+    
+    This function identifies artifacts by detecting periods of disconnection 
+    (very low amplitude) and excessive noise (high derivative) in windowed segments.
+    Returns a boolean mask indicating artifact-contaminated time points.
+    
     Args:
-        data pandas
-        fs (float): _description_
-        discon (_type_, optional): _description_. Defaults to 1/12.
-        noise (int, optional): _description_. Defaults to 15000.
-        win_size (int, optional): _description_. Defaults to 1.
-
+        data (numpy.ndarray): Input iEEG data array
+            - Shape: (time_points, channels)
+        fs (float): Sampling frequency in Hz
+        discon (float, optional): Disconnection threshold (low amplitude). 
+            Defaults to 1/12 ≈ 0.083.
+        noise (int, optional): High-frequency noise threshold. Defaults to 15000.
+        win_size (int, optional): Window size for analysis in seconds. Defaults to 1.
+        
     Returns:
-        np.ndarray: _description_
+        numpy.ndarray: Boolean artifact mask with same shape as input
+            - True: Artifact detected
+            - False: Clean data
+            
+    Artifact detection criteria:
+        1. Disconnection: Sum of absolute values < discon threshold in window
+        2. High-frequency noise: RMS of differences > noise threshold in window
+        3. NaN values: Automatically marked as artifacts
+        
+    Notes:
+        - Processes data in non-overlapping windows
+        - Artifacts in any window affect entire window duration
+        - Designed for clinical iEEG with typical amplitude ranges
+        - Thresholds may need adjustment for different recording systems
+        - NaN values are preserved and marked as artifacts
+        
+    Window-based processing:
+        - Divides data into win_size second windows
+        - Applies thresholds within each window
+        - Marks entire window as artifact if criteria met
+        
+    Example:
+        >>> artifact_mask = artifact_removal(data, fs=500, win_size=2)
+        >>> clean_data = data.copy()
+        >>> clean_data[artifact_mask] = np.nan  # Mark artifacts as NaN
     """
     win_size = int(win_size * fs)
     
@@ -951,11 +1430,55 @@ def artifact_removal(
 
 
 def detect_bad_channels(data,fs,lf_stim = False):
-    '''
-    data: raw EEG traces after filtering (i think)
-    fs: sampling frequency
-    channel_labels: string labels of channels to use
-    '''
+    """
+    Automatically identify bad channels in iEEG data using multiple artifact detection criteria.
+    
+    This comprehensive function identifies problematic channels based on various
+    artifact signatures including disconnection, excessive noise, flat-lining,
+    high 60Hz content, and extreme variance. Designed for clinical iEEG recordings.
+    
+    Args:
+        data (numpy.ndarray): iEEG data array
+            - Shape: (time_points, channels)
+            - Units: typically microvolts (μV)
+        fs (float): Sampling frequency in Hz
+        lf_stim (bool, optional): If True, relaxes criteria for stimulation datasets.
+            Defaults to False.
+            
+    Returns:
+        tuple: (channel_mask, details) where:
+            - channel_mask: Boolean array (True = good channel, False = bad channel)
+            - details: Dictionary with lists of bad channels by category
+            
+    Bad channel detection criteria:
+        1. NaN channels: >50% NaN values
+        2. Zero channels: >50% zero values  
+        3. Flat channels: >2% consecutive identical values + high amplitude
+        4. High voltage: >10 samples above 5000μV threshold
+        5. High variance: Values in 99th percentile with extreme outliers
+        6. High 60Hz: >70% power in 58-62Hz range
+        7. High std: Standard deviation >10x median across channels
+        
+    Args details:
+        - lf_stim=True: Relaxes high voltage and high variance criteria
+        - Designed for μV-scale data (multiplies by 1000 internally)
+        - Uses FFT analysis for 60Hz noise detection
+        
+    Returns details dictionary keys:
+        - 'noisy': High 60Hz content channels
+        - 'nans': High NaN content channels  
+        - 'zeros': High zero content channels
+        - 'flat': Flat-lining channels
+        - 'var': High variance channels
+        - 'higher_std': Extremely high standard deviation channels
+        - 'high_voltage': High amplitude artifact channels
+        
+    Example:
+        >>> mask, bad_info = detect_bad_channels(data*1e6, fs=500)  # Convert to μV
+        >>> print(f"Rejected {sum(~mask)} channels:")
+        >>> for category, channels in bad_info.items():
+        >>>     if channels: print(f"  {category}: {len(channels)} channels")
+    """
     values = data.copy()
     which_chs = np.arange(values.shape[1])
     ## Parameters to reject super high variance
@@ -1062,20 +1585,78 @@ def detect_bad_channels(data,fs,lf_stim = False):
 
 
 def num_wins(xLen, fs, winLen, winDisp):
-  return int(((xLen/fs - winLen + winDisp) - ((xLen/fs - winLen + winDisp)%winDisp))/winDisp)
+    """
+    Calculate the number of non-overlapping analysis windows for given data length.
+    
+    This utility function determines how many complete analysis windows can be 
+    extracted from a data segment with specified window length and displacement.
+    
+    Args:
+        xLen (int): Length of data in samples
+        fs (float): Sampling frequency in Hz  
+        winLen (float): Window length in seconds
+        winDisp (float): Window displacement/step size in seconds
+        
+    Returns:
+        int: Number of complete windows that fit in the data
+        
+    Notes:
+        - Calculates based on non-overlapping windows (displacement = window length)
+        - For overlapping windows, winDisp < winLen
+        - For non-overlapping windows, winDisp = winLen
+        - Rounds down to ensure complete windows only
+        
+    Formula:
+        n_windows = floor((data_duration - winLen + winDisp) / winDisp)
+        where data_duration = xLen / fs
+        
+    Example:
+        >>> # 10 seconds of data at 500Hz, 2-second windows, 1-second steps
+        >>> n_wins = num_wins(5000, 500, 2.0, 1.0)
+        >>> # Returns 9 (windows at 0-2s, 1-3s, 2-4s, ..., 8-10s)
+    """
+    return int(((xLen/fs - winLen + winDisp) - ((xLen/fs - winLen + winDisp)%winDisp))/winDisp)
 
 
 def bipolar_montage(data: np.ndarray, ch_types: pd.DataFrame) -> np.ndarray:
-    """_summary_
-
-    Args:
-        data (np.ndarray): _description_
-        ch_types (pd.DataFrame): _description_
-
-    Returns:
-        np.ndarray: _description_
     """
-
+    Convert iEEG data to bipolar montage by subtracting adjacent electrode contacts.
+    
+    Bipolar montage reduces common-mode artifacts and emphasizes local field potentials
+    by computing differences between adjacent contacts on the same electrode lead.
+    This is standard practice in clinical iEEG analysis.
+    
+    Args:
+        data (numpy.ndarray): Raw iEEG data
+            - Shape: (channels, time_points)
+        ch_types (pandas.DataFrame): Channel information with columns:
+            - 'name': Channel name (e.g., "LH01", "LH02") 
+            - 'type': Channel type ("ecog", "seeg", "eeg", "ecg", "misc")
+            - 'lead': Lead/electrode name (e.g., "LH")
+            - 'contact': Contact number on lead (e.g., 1, 2, 3)
+            
+    Returns:
+        tuple: (new_data, new_ch_types) where:
+            - new_data: Bipolar montage data (fewer channels than input)
+            - new_ch_types: DataFrame describing bipolar channel pairs
+            
+    Bipolar montage creation:
+        - Only applies to 'ecog' and 'seeg' channels
+        - Creates pairs: contact_n - contact_(n+1) for each lead
+        - Results in channel names like "LH01-LH02", "LH02-LH03", etc.
+        - Reduces number of channels by ~half
+        
+    Notes:
+        - Skips channels that aren't ecog/seeg (preserves EEG, ECG channels)
+        - Requires consecutive contact numbering within each lead
+        - Last contact on each lead cannot form a pair (discarded)
+        - Common mode rejection reduces artifacts and volume conduction
+        
+    Example:
+        >>> # Convert to bipolar montage
+        >>> bp_data, bp_channels = bipolar_montage(raw_data, channel_info)
+        >>> print(f"Reduced from {raw_data.shape[0]} to {bp_data.shape[0]} channels")
+    """
     n_ch = len(ch_types)
     new_ch_types = []
     for ind, row in ch_types.iterrows():
@@ -1110,16 +1691,41 @@ def bipolar_montage(data: np.ndarray, ch_types: pd.DataFrame) -> np.ndarray:
 
 def ar_one(data):
     """
-    The ar_one function fits an AR(1) model to the data and retains the residual as
-    the pre-whitened data
-    Parameters
-    ----------
-        data: ndarray, shape (T, N)
-            Input signal with T samples over N variates
-    Returns
-    -------
-        data_white: ndarray, shape (T, N)
-            Whitened signal with reduced autocorrelative structure
+    Apply AR(1) autoregressive whitening to reduce temporal autocorrelation.
+    
+    This preprocessing step fits a first-order autoregressive model to each channel
+    and retains the residuals, which have reduced autocorrelation structure.
+    This can improve the independence assumption for many statistical analyses.
+    
+    Args:
+        data (numpy.ndarray): Input signal data
+            - Shape: (time_points, channels)
+            
+    Returns:
+        numpy.ndarray: Whitened signal with reduced autocorrelation
+            - Shape: (time_points-1, channels) [one sample shorter]
+            
+    Notes:
+        - Fits AR(1) model: x[t] = a*x[t-1] + b + noise
+        - Returns residuals: x[t] - (a*x[t-1] + b)
+        - Reduces temporal correlations while preserving signal content
+        - Useful before applying analyses that assume independence
+        - Output is one sample shorter due to lag-1 operation
+        
+    Mathematical model:
+        For each channel i:
+        x[t] = w[0]*x[t-1] + w[1] + residual[t]
+        where w is fitted via least squares
+        
+    Applications:
+        - Seizure detection preprocessing
+        - Connectivity analysis preparation  
+        - Statistical analysis requiring independence
+        
+    Example:
+        >>> # Remove temporal autocorrelation
+        >>> whitened_data = ar_one(filtered_data)
+        >>> # Apply detection algorithm to whitened data
     """
     # Retrieve data attributes
     n_samp, n_chan = data.shape
@@ -1132,6 +1738,49 @@ def ar_one(data):
     return data_white
 
 def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False, pre_mask = None):
+    """
+    Complete preprocessing pipeline for seizure detection algorithms.
+    
+    This function implements a standardized preprocessing workflow commonly used
+    for automated seizure detection, including montage conversion, channel rejection,
+    filtering, resampling, and autoregressive whitening.
+    
+    Args:
+        data (pandas.DataFrame): Raw iEEG data with channel names as columns
+        fs (float): Original sampling frequency in Hz
+        montage (str, optional): Montage type ('bipolar' or 'car'). Defaults to 'bipolar'.
+        target (int, optional): Target sampling frequency for resampling. Defaults to 256.
+        wavenet (bool, optional): If True, uses WaveNet-specific parameters. Defaults to False.
+        pre_mask (list, optional): Pre-specified channels to exclude. If None, auto-detects bad channels.
+        
+    Returns:
+        tuple: (processed_data, new_fs, [bad_channels]) where:
+            - processed_data: Preprocessed DataFrame ready for detection
+            - new_fs: Final sampling frequency (= target)
+            - bad_channels: List of rejected channels (only if pre_mask=None)
+            
+    Preprocessing pipeline:
+        1. Channel type classification
+        2. Montage conversion (bipolar or CAR)
+        3. Bad channel detection and removal  
+        4. Notch filtering (60/120Hz)
+        5. Bandpass filtering
+        6. Resampling to target frequency
+        7. AR(1) whitening
+        
+    Montage options:
+        - 'bipolar': Adjacent contact differences (reduces common artifacts)
+        - 'car': Common average reference (subtracts mean across channels)
+        
+    Filter settings:
+        - Standard: 3-100Hz bandpass, 256Hz target
+        - WaveNet: 3-127Hz bandpass, 128Hz target
+        
+    Example:
+        >>> # Standard seizure detection preprocessing
+        >>> proc_data, fs_new = preprocess_for_detection(raw_data, 1000)
+        >>> # Use proc_data with detection algorithm
+    """
     # This function implements preprocessing steps for seizure detection
     chs = data.columns.to_list()
     ch_df = check_channel_types(chs)
@@ -1179,6 +1828,36 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     
 
 def remove_scalp_electrodes(raw_labels):
+    """
+    Filter out scalp EEG electrodes from a list of channel labels.
+    
+    This function removes standard scalp EEG channels (10-20 system), ECG, EMG,
+    and other non-intracranial channels from a channel list, leaving only 
+    depth/grid electrodes for intracranial analysis.
+    
+    Args:
+        raw_labels (list): List of all channel labels from the recording
+        
+    Returns:
+        list: Filtered list containing only intracranial electrode channels
+        
+    Removed channel types:
+        - Standard 10-20 EEG: CZ, FZ, PZ, C03/C04, F03/F04, etc.
+        - Physiological monitoring: EKG01/02, EMG01/02, ROC, LOC
+        - CHOP-specific scalp: C119-C128 range
+        - Reference/ground: DC01, DC07
+        
+    Notes:
+        - Case-insensitive matching (converts to uppercase)
+        - Preserves intracranial depth and grid electrodes
+        - Useful for focusing analysis on brain tissue recordings
+        - CHOP hospital uses specific C1xx numbering for scalp channels
+        
+    Example:
+        >>> all_channels = ['LH01', 'LH02', 'CZ', 'F03', 'RG01', 'EKG01']
+        >>> brain_channels = remove_scalp_electrodes(all_channels)
+        >>> # Returns ['LH01', 'LH02', 'RG01'] - only intracranial channels
+    """
     scalp_list = ['CZ','FZ','PZ',
                   'A01','A02',
                   'C03','C04',
@@ -1201,21 +1880,85 @@ def remove_scalp_electrodes(raw_labels):
 ######################## Univariate, Time Domain ########################
 
 def MovingWinClips(x,fs,winLen,winDisp):
-  # calculate number of windows and initialize receiver
-  nWins = num_wins(len(x),fs,winLen,winDisp)
-  samples = np.empty((nWins,winLen*fs))
-  # create window indices - these windows are left aligned
-  idxs = np.array([(winDisp*fs*i,(winLen+winDisp*i)*fs)\
-                   for i in range(nWins)],dtype=int)
-  # apply feature function to each channel
-  for i in range(idxs.shape[0]):
-    samples[i,:] = x[idxs[i,0]:idxs[i,1]]
-  
-  return samples
+    """
+    Extract overlapping or non-overlapping time windows from a 1D signal.
+    
+    This function creates a matrix of time windows from a continuous signal,
+    useful for feature extraction or sliding window analysis. Each row contains
+    one time window of the signal.
+    
+    Args:
+        x (array-like): Input 1D signal
+        fs (float): Sampling frequency in Hz
+        winLen (float): Window length in seconds
+        winDisp (float): Window displacement/step size in seconds
+        
+    Returns:
+        numpy.ndarray: Matrix of time windows
+            - Shape: (n_windows, samples_per_window)
+            - Each row is one time window
+            
+    Notes:
+        - Window displacement determines overlap:
+            * winDisp = winLen: Non-overlapping windows
+            * winDisp < winLen: Overlapping windows
+            * winDisp > winLen: Gaps between windows
+        - Uses num_wins() to calculate number of windows
+        - Windows are left-aligned (start at displacement intervals)
+        - Incomplete final windows are excluded
+        
+    Example:
+        >>> # Extract 2-second windows with 1-second overlap
+        >>> signal = np.random.randn(5000)  # 10 seconds at 500Hz
+        >>> windows = MovingWinClips(signal, fs=500, winLen=2.0, winDisp=1.0)
+        >>> print(f"Shape: {windows.shape}")  # (9, 1000) - 9 windows of 1000 samples
+    """
+    # calculate number of windows and initialize receiver
+    nWins = num_wins(len(x),fs,winLen,winDisp)
+    samples = np.empty((nWins,winLen*fs))
+    # create window indices - these windows are left aligned
+    idxs = np.array([(winDisp*fs*i,(winLen+winDisp*i)*fs)\
+                     for i in range(nWins)],dtype=int)
+    # apply feature function to each channel
+    for i in range(idxs.shape[0]):
+        samples[i,:] = x[idxs[i,0]:idxs[i,1]]
+    
+    return samples
 
 
 
 def dice_score(x,y):
+    """
+    Calculate Dice similarity coefficient between two sets or arrays.
+    
+    The Dice coefficient measures overlap between two sets, commonly used
+    for comparing binary masks, electrode selections, or segmentation results.
+    Returns a value between 0 (no overlap) and 1 (perfect overlap).
+    
+    Args:
+        x (array-like): First set or array to compare
+        y (array-like): Second set or array to compare
+        
+    Returns:
+        float: Dice coefficient (0-1 scale)
+            - 0: No overlap between sets
+            - 1: Perfect overlap (identical sets)
+            
+    Formula:
+        Dice = 2 * |intersection| / (|x| + |y|)
+        
+    Notes:
+        - Handles scalar inputs by converting to arrays
+        - Uses np.intersect1d for set intersection
+        - More sensitive to size differences than Jaccard index
+        - Commonly used in medical image analysis and electrode studies
+        
+    Example:
+        >>> set1 = ['ch1', 'ch2', 'ch3', 'ch4']
+        >>> set2 = ['ch2', 'ch3', 'ch4', 'ch5'] 
+        >>> similarity = dice_score(set1, set2)
+        >>> print(f"Dice coefficient: {similarity:.3f}")  # 0.75
+    """
     num = 2*len(np.intersect1d(x,y))
     if len(x.shape) < 1:
         x = np.array([str(x)])
@@ -1227,11 +1970,67 @@ def dice_score(x,y):
 
 ########################### Workspace Preparation ###########################
 def set_seed(seed):
-  np.random.seed(seed)
-  torch.manual_seed(seed)
-  random.seed(seed)
+    """
+    Set random seeds for reproducible results across multiple libraries.
+    
+    This function sets random seeds for NumPy, PyTorch, and Python's random
+    module to ensure reproducible results in stochastic algorithms and analyses.
+    
+    Args:
+        seed (int): Random seed value to use across all libraries
+        
+    Notes:
+        - Sets seeds for: numpy, torch, and Python random
+        - Critical for reproducible machine learning experiments
+        - Should be called at the beginning of analysis scripts
+        - Does not guarantee identical results across different hardware/software versions
+        
+    Example:
+        >>> set_seed(42)  # Use consistent seed across experiments
+        >>> # Now all random operations will be reproducible
+    """
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    random.seed(seed)
 
 def load_config(config_path,flag='HUP'):
+    """
+    Load configuration file and set up analysis environment with plotting parameters.
+    
+    This function loads a JSON configuration file containing paths, patient information,
+    and analysis parameters. It also sets up matplotlib plotting parameters for 
+    consistent figure styling across the analysis pipeline.
+    
+    Args:
+        config_path (str): Path to the JSON configuration file
+        flag (str, optional): Patient cohort filter ('HUP' or 'CHOP'). Defaults to 'HUP'.
+        
+    Returns:
+        tuple: Configuration data and patient information:
+            - usr: iEEG.org username
+            - passpath: Path to iEEG.org password file
+            - datapath: Path to raw data directory
+            - prodatapath: Path to processed data directory  
+            - metapath: Path to metadata directory
+            - figpath: Path to figures directory
+            - patient_table: Filtered DataFrame of patient information
+            - rid_hup: DataFrame mapping HUP IDs to RIDs
+            - pt_list: Array of patient IDs
+            
+    Configuration file structure:
+        - paths: Dictionary with data directory paths and credentials
+        - patients: List of patient information dictionaries
+        
+    Plotting parameters set:
+        - Default colormap: 'magma'
+        - Font sizes: 14pt labels, 16pt titles
+        - Line widths: 2pt default
+        - Tick sizes and widths for publication quality
+        
+    Example:
+        >>> usr, pwd_path, raw_dir, proc_dir, meta_dir, fig_dir, patients, mapping, pt_ids = load_config('config.json', 'HUP')
+        >>> # Environment now configured for HUP patient analysis
+    """
     plt.rcParams['image.cmap'] = 'magma'
 
     plt.rcParams['xtick.labelsize'] = 14
@@ -1271,6 +2070,40 @@ def load_config(config_path,flag='HUP'):
 ########################### OS Utils ###########################
 
 def in_parallel(func, data, verbose=False, n_jobs = -1):
+    """
+    Execute a function in parallel across multiple data items using joblib.
+    
+    This utility function parallelizes the execution of a function across
+    a list of data items, utilizing multiple CPU cores for faster processing.
+    Useful for embarrassingly parallel tasks like feature extraction.
+    
+    Args:
+        func (callable): Function to apply to each data item
+            - Should accept one argument (item from data list)
+        data (list): List of data items to process
+        verbose (bool, optional): If True, prints progress information. Defaults to False.
+        n_jobs (int, optional): Number of parallel jobs. Defaults to -1 (all cores).
+            - -1: Use all available CPU cores
+            - 1: No parallelization (sequential)
+            - >1: Use specified number of cores
+            
+    Returns:
+        list: Results from applying func to each item in data
+        
+    Notes:
+        - Uses joblib.Parallel with delayed execution
+        - Automatically detects available CPU cores when n_jobs=-1
+        - Best for CPU-bound tasks with independent data items
+        - Overhead may not be worth it for very fast functions
+        
+    Example:
+        >>> def process_patient(patient_id):
+        >>>     # Some analysis function
+        >>>     return analyze_data(patient_id)
+        >>> 
+        >>> patient_list = ['HUP001', 'HUP002', 'HUP003']
+        >>> results = in_parallel(process_patient, patient_list, verbose=True)
+    """
     if n_jobs < 1:
         threads = os.cpu_count()
     else:
@@ -1284,6 +2117,50 @@ def in_parallel(func, data, verbose=False, n_jobs = -1):
 ########################### Analysis Utils ###########################
 
 def calculate_seizure_similarity(annots,first_annot = 'ueo_consensus', second_annot = 'ueo_consensus',paired=True):
+    """
+    Calculate similarity metrics between seizure annotations within and across patients.
+    
+    This function computes agreement metrics (kappa, F1, MCC) between seizure onset
+    annotations, either comparing different annotators or comparing seizures within
+    the same patient. Useful for studying annotation reliability and seizure consistency.
+    
+    Args:
+        annots (pandas.DataFrame): DataFrame containing seizure annotations with columns:
+            - patient: Patient identifier
+            - stim: Binary indicator (1=stimulated, 0=spontaneous)
+            - typical: Binary indicator for typical seizures
+            - {first_annot}: First annotation array/mask
+            - {second_annot}: Second annotation array/mask
+        first_annot (str, optional): Column name for first annotation. Defaults to 'ueo_consensus'.
+        second_annot (str, optional): Column name for second annotation. Defaults to 'ueo_consensus'.
+        paired (bool, optional): If True, requires ≥2 spontaneous seizures per patient. Defaults to True.
+        
+    Returns:
+        pandas.DataFrame: Similarity results with columns:
+            - kappa: Cohen's kappa coefficient
+            - F1: F1 score  
+            - MCC: Matthews correlation coefficient
+            - patient: Patient identifier
+            - spont: Boolean (True=both seizures spontaneous)
+            - typical: Boolean (True=at least one seizure typical)
+            
+    Agreement metrics:
+        - Cohen's kappa: Inter-rater agreement correcting for chance
+        - F1 score: Harmonic mean of precision and recall
+        - MCC: Matthews correlation coefficient (balanced metric)
+        
+    Notes:
+        - Compares all seizure pairs within each patient
+        - Skips comparisons between two stimulated seizures
+        - Skips patients without sufficient seizures (if paired=True)
+        - Annotations should be binary arrays/masks of electrode involvement
+        
+    Example:
+        >>> similarity_df = calculate_seizure_similarity(seizure_annots)
+        >>> # Compare spontaneous vs stimulated seizure similarity
+        >>> spont_sim = similarity_df[similarity_df.spont]['MCC'].median()
+        >>> stim_sim = similarity_df[~similarity_df.spont]['MCC'].median()
+    """
     annot_list = ["kappa","F1","MCC","patient","spont","typical"]
     annot_dict = {key:[] for key in annot_list}
     skip_pt = []
@@ -1314,10 +2191,173 @@ def calculate_seizure_similarity(annots,first_annot = 'ueo_consensus', second_an
     print(f"Skipped {skip_pt} due to insufficient spontaneous seizures")
     return annot_df
 
+def calculate_spread_similarity(annots, first_annot='sz_chs', second_annot='sz_chs',
+                                 sources='all_channels', spread_thresh=30, paired=True):
+    """
+    Calculate similarity metrics for seizure spread patterns within a time threshold.
+    
+    This function compares seizure propagation patterns by analyzing which channels/regions
+    are recruited within a specified time window. It computes both binary overlap (MCC) and
+    temporal ranking similarity (Spearman correlation) between seizure pairs.
+    
+    Args:
+        annots (pandas.DataFrame): DataFrame containing seizure annotations with columns:
+            - patient: Patient identifier
+            - stim: Binary indicator (1=stimulated, 0=spontaneous)
+            - typical: Binary indicator for typical seizures
+            - sz_times: List of recruitment times for each channel/region
+            - {first_annot}: List of recruited channels/regions (e.g., 'sz_chs')
+            - {second_annot}: List of recruited channels/regions for comparison
+            - {sources}: List of all possible channels/regions to consider
+        first_annot (str, optional): Column name for first seizure's recruited units. 
+            Defaults to 'sz_chs'.
+        second_annot (str, optional): Column name for second seizure's recruited units. 
+            Defaults to 'sz_chs'.
+        sources (str, optional): Column name for all possible channels/regions. 
+            Defaults to 'all_channels'.
+        spread_thresh (float, optional): Time threshold in seconds for early recruitment. 
+            Defaults to 30.
+        paired (bool, optional): If True, requires ≥2 spontaneous seizures per patient. 
+            Defaults to True.
+            
+    Returns:
+        pandas.DataFrame: Spread similarity results with columns:
+            - MCC: Matthews correlation coefficient for binary recruitment overlap
+            - Rank: Spearman correlation for temporal recruitment ranking
+            - patient: Patient identifier
+            - spont: Boolean (True=both seizures spontaneous)
+            - typical: Boolean (True=at least one seizure typical)
+            
+    Algorithm:
+        1. For each seizure pair within a patient:
+           a. Identify channels recruited before spread_thresh
+           b. Create binary mask of early-recruited channels
+           c. Calculate recruitment latencies for all channels
+           d. Compare binary patterns (MCC) and ranking patterns (Spearman)
+        
+    Similarity metrics:
+        - MCC: Binary overlap of channels recruited within time threshold
+        - Rank: Spearman correlation of recruitment time rankings across all channels
+        
+    Notes:
+        - Skips seizure pairs where both are stimulated
+        - Handles missing recruitment data (empty sz_times lists)
+        - Uses minimum recruitment time when channels appear multiple times
+        - Assigns maximum latency + 1 to non-recruited channels for ranking
+        - Filters patients with insufficient seizure counts (if paired=True)
+        
+    Example:
+        >>> # Compare seizure spread patterns within 30 seconds
+        >>> spread_sim = calculate_spread_similarity(seizure_data, spread_thresh=30)
+        >>> print(f"Mean early spread similarity: {spread_sim['MCC'].mean():.3f}")
+        >>> print(f"Mean temporal ranking similarity: {spread_sim['Rank'].mean():.3f}")
+    """
+    annot_list = ["MCC", "Rank", "patient", "spont", "typical"]
+    annot_dict = {key: [] for key in annot_list}
+    skip_pt = []
+
+    for pt, group in annots.groupby("patient"):
+        if (sum(group.stim == 0) < 2 and paired) or (len(group) < 2):
+            skip_pt.append(pt)
+            continue
+
+        group = group.reset_index(drop=True)
+
+        for i in range(len(group)):
+            sz_i = group.loc[i]
+            if len(sz_i['sz_times']) == 0:
+                continue
+
+            # Create mask for channels/regions recruited before spread_thresh
+            ch_time_mask = np.array(sz_i['sz_times']) < spread_thresh
+            ch_mask = np.isin(sz_i[sources], np.array(sz_i[first_annot])[ch_time_mask])
+
+            # Use groupby one-liner to get minimum time per unit
+            onset_dict = pd.DataFrame({
+                "unit": sz_i[first_annot],
+                "time": sz_i['sz_times']
+            }).groupby("unit")["time"].min().to_dict()
+
+            max_latency = max(onset_dict.values()) + 1
+            all_latencies = np.array([onset_dict.get(ch, max_latency) for ch in sz_i[sources]])
+
+            for j in range(i + 1, len(group)):
+                sz_j = group.loc[j]
+                if sz_i['stim'] == 1 and sz_j['stim'] == 1:
+                    continue
+                if len(sz_j['sz_times']) == 0:
+                    continue
+
+                ch_time_mask2 = np.array(sz_j['sz_times']) < spread_thresh
+                ch_mask2 = np.isin(sz_j[sources], np.array(sz_j[second_annot])[ch_time_mask2])
+
+                onset_dict2 = pd.DataFrame({
+                    "unit": sz_j[second_annot],
+                    "time": sz_j['sz_times']
+                }).groupby("unit")["time"].min().to_dict()
+
+                max_latency2 = max(onset_dict2.values()) + 1
+                all_latencies2 = np.array([onset_dict2.get(ch, max_latency2) for ch in sz_j[sources]])
+
+                annot_dict["MCC"].append(matthews_corrcoef(ch_mask, ch_mask2))
+                annot_dict["Rank"].append(sc.stats.spearmanr(all_latencies, all_latencies2).statistic)
+                annot_dict["spont"].append(not (sz_i['stim'] == 1 or sz_j['stim'] == 1))
+                annot_dict["typical"].append(sz_i['typical'] == 1 or sz_j['typical'] == 1)
+                annot_dict["patient"].append(pt)
+
+    annot_df = pd.DataFrame(annot_dict)
+    print(f"Skipped {skip_pt} due to insufficient spontaneous seizures")
+    return annot_df
     
 def plot_seizure_similarity(dat,agreement='MCC',palette=['red','blue','purple'],annot_type='',
                             sz_level=True, binary = False, typical = None, combiner = 75,
-                            annot_stats=True):
+                            annot_stats=True,figpath=''):
+    """
+    Create publication-quality plots comparing seizure similarity between conditions.
+    
+    This function generates statistical comparison plots for seizure similarity metrics,
+    typically comparing spontaneous-spontaneous vs stimulated-spontaneous seizure pairs.
+    Includes statistical testing and effect size reporting.
+    
+    Args:
+        dat (pandas.DataFrame): Seizure similarity data from calculate_seizure_similarity()
+        agreement (str, optional): Similarity metric to plot ('MCC', 'kappa', 'F1'). 
+            Defaults to 'MCC'.
+        palette (list, optional): Colors for plot elements. Defaults to ['red','blue','purple'].
+        annot_type (str, optional): Annotation type label for titles. Defaults to ''.
+        sz_level (bool, optional): If True, uses seizure-level analysis (mixed effects).
+            If False, aggregates to patient level. Defaults to True.
+        binary (bool, optional): If True, treats agreement as binary outcome. Defaults to False.
+        typical (bool, optional): Filter for typical seizures only. Defaults to None.
+        combiner (int, optional): Percentile for patient-level aggregation. Defaults to 75.
+        annot_stats (bool, optional): If True, adds statistical annotations to plot. 
+            Defaults to True.
+            
+    Returns:
+        tuple: (fig, ax) - matplotlib figure and axis objects
+        
+    Statistical methods:
+        - Seizure-level: Mixed-effects linear model (accounts for patient clustering)
+        - Patient-level: Wilcoxon signed-rank test (paired comparison)
+        - Binary outcomes: Chi-square test of independence
+        
+    Plot elements:
+        - Point plot showing medians with error bars
+        - Swarm plot showing individual data points
+        - Statistical annotations (p-values, effect sizes)
+        - Cohen's d effect size calculation and reporting
+        
+    Notes:
+        - Automatically handles patient-level aggregation using specified percentile
+        - Supports both continuous similarity metrics and binary agreement outcomes
+        - Prints summary statistics (median, IQR) for each condition
+        - Uses statannotations package for clean statistical annotations
+        
+    Example:
+        >>> fig, ax = plot_seizure_similarity(similarity_data, agreement='MCC')
+        >>> plt.savefig('seizure_similarity.pdf', bbox_inches='tight')
+        >>> plt.show()
+    """
     if typical is not None:
         all_groups = []
         for _, group in dat.groupby(['patient']):
@@ -1349,7 +2389,6 @@ def plot_seizure_similarity(dat,agreement='MCC',palette=['red','blue','purple'],
         {col: 'max' for col in non_numeric_cols}
     ).reset_index()
 
-    # pt_data = data.groupby(["patient","spont"])[["kappa","F1"]].apply(agg_funcs).reset_index()
     fig,ax = plt.subplots(figsize=(4,5))
     if sz_level:
         model = smf.mixedlm(f"{agreement} ~ C(spont)", dat, groups="patient")
@@ -1357,7 +2396,6 @@ def plot_seizure_similarity(dat,agreement='MCC',palette=['red','blue','purple'],
         print(result.summary())
         print(result.pvalues)
         plot_data = dat
-        # plt.title(f"Seizure-Level Seizure{annot_type} Similarity")
 
     else:
         plot_data = pt_data
