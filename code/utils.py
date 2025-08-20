@@ -1878,6 +1878,83 @@ def remove_scalp_electrodes(raw_labels):
 
 
 ######################## Univariate, Time Domain ########################
+def _timeseries_to_wins(
+    data: np.ndarray, fs: float, win_size=2, win_stride=1
+) -> np.ndarray:
+    """_summary_
+
+    Args:
+        data (np.ndarray)
+        fs (float): _description_
+        win_size (int, optional): _description_. Defaults to 2.
+        win_stride (int, optional): _description_. Defaults to 1.
+
+    Returns:
+        np.ndarray: _description_
+    """
+    n_samples = data.shape[-1]
+
+    idx = (
+        np.arange(win_size * fs, dtype=int)[None, :]
+        + np.arange(n_samples - win_size * fs + 1, dtype=int)[
+            :: int(win_stride * fs), None
+        ]
+    )
+    return data[:, idx]
+
+def ft_extract(
+    data: np.ndarray, fs: float, ft: str, win_size=2, win_stride=1, fn_kwargs={}
+) -> np.ndarray:
+    """_summary_
+
+    Args:
+        data (mne.io.edf.edf.RawEDF): _description_
+        ft (str): _description_
+        win_size (int, optional): _description_. Defaults to 2.
+        win_stride (int, optional): _description_. Defaults to 1.
+
+    Returns:
+        np.ndarray: _description_
+    """
+    wins = _timeseries_to_wins(data, fs, win_size, win_stride)
+    wins = np.transpose(wins, (1, 0, 2))
+
+    # if ft is a list of features, then calculate both featurs and concatenate
+    if isinstance(ft, list):
+        assert len(ft) == len(fn_kwargs), "Incorrect number of feature arguments given"
+        # ft_array = np.empty((n_ch, n_wins, len(ft)))
+        ft_array = []
+        for i, fn in enumerate(ft):
+            # if f is not callable, then raise value error
+            if not callable(fn):
+                raise ValueError("Incorrect feature argument given")
+            for win in wins:
+                ft_array.append(fn(win, **(fn_kwargs[i])))
+        ft_array = np.array(ft_array)
+        # transpose to n_ch x n_wins x n_ft
+        ft_array = np.transpose(ft_array, (1, 0, 2))
+        return ft_array
+
+    elif callable(ft):
+        # ft_array = np.empty((n_ch, n_wins))
+
+        ft_array = []
+
+        for i, win in enumerate(wins):
+            ft_array.append(ft(win, **fn_kwargs))
+        
+        ft_array = np.array(ft_array)
+        
+        # convert 2 dim to 3 dim
+        if ft_array.ndim == 2:
+            ft_array = ft_array[:, :, None]
+        # transpose to n_ch x n_wins x n_ft
+        ft_array = np.transpose(ft_array, (1, 0, 2))
+
+    else:
+        raise ValueError("Incorrect feature type given")
+
+    return ft_array
 
 def MovingWinClips(x,fs,winLen,winDisp):
     """
@@ -2459,5 +2536,3 @@ def plot_seizure_similarity(dat,agreement='MCC',palette=['red','blue','purple'],
 
 
     return fig,ax
-
-# %%
