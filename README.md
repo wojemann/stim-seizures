@@ -1,5 +1,6 @@
 # stim-seizures
 Analyzing the relationsihp between low-frequency electrical stimulation induced seizure and spontaneous seizure networks.
+![alt text](https://github.com/wojemann/stim-seizures/stim_paper/stim_seizures_fig1.png "Intro Figure")
 
 ## ⚡️ Can electrical stimulation replace spontaneous seizures?
 ### 👨‍🍳 Authors
