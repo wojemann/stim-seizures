@@ -54,12 +54,12 @@ William K.S. Ojemann [1,2], Caren Armstrong [3,4], Akash Pattnaik [1,2], Nina Pe
   ```
 - Download data checkpoints from (link here soon!) 
 - Update config.py
-    - usr *ieeg.org username*
-    - passpath *Path to ieeg.org login binary password file*
-    - RAW_DATA *Path to raw data and localizations, this folder is not required for the quick run*
-    - PROCESSED_DATA *Path to processed data checkpoints, required*
-    - METADATA *Path to patient and seizure metadata, required*
-    - figures *Path where figures will be saved while running scripts*
+    - usr - *ieeg.org username*
+    - passpath - *Path to ieeg.org login binary password file*
+    - RAW_DATA - *Path to raw data and localizations, this folder is not required for the quick run*
+    - PROCESSED_DATA - *Path to processed data checkpoints, required*
+    - METADATA - *Path to patient and seizure metadata, required*
+    - figures - *Path where figures will be saved while running scripts*
 - Run quickstart.sh
   ```bash
   
