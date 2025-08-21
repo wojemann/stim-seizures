@@ -1108,7 +1108,7 @@ def plot_iEEG_data(
     ax.plot(t, data + ticklocs, color=plot_color, lw=0.4)
 
     if shade_color is not None:    
-        shade_y_ticks_background(ax, ticklocs, shade_color, alpha=shade_alpha)
+        _shade_y_ticks_background(ax, ticklocs, shade_color, alpha=shade_alpha)
 
     if empty:
         for spine in ax.spines.values():
@@ -1121,94 +1121,6 @@ def plot_iEEG_data(
         ax.tick_params(axis='both', which='both', length=0)
 
     return fig, ax
-
-
-def make_surf_transforms(sub_rid=None, overwrite=False, path=None):
-    """
-    Generate FreeSurfer surface files with proper coordinate transformations for visualization.
-    
-    This function creates transformed surface meshes from FreeSurfer output that can be
-    used for electrode visualization and brain surface rendering. It handles the complex
-    coordinate transformations between FreeSurfer's internal coordinate systems and
-    scanner coordinates.
-    
-    Args:
-        sub_rid (str, optional): Subject RID (e.g., "sub-RID0031"). Either this or path required.
-        overwrite (bool, optional): If True, regenerates files even if they exist. Defaults to False.
-        path (str, optional): Direct path to FreeSurfer directory. Either this or sub_rid required.
-        
-    Returns:
-        list: List of file paths to the generated transformed surface files:
-            - Combined left+right hemisphere surface
-            - Right hemisphere surface  
-            - Left hemisphere surface
-            
-    Notes:
-        - Reads FreeSurfer pial surfaces (lh.pial, rh.pial)
-        - Applies vox2ras and TkRAS coordinate transformations
-        - Creates combined bilateral surface for easier visualization
-        - Saves transformed surfaces with "_transform" suffix
-        - Requires FreeSurfer-processed T1 MRI with surface reconstruction
-        
-    Coordinate transformations:
-        1. Loads surfaces in FreeSurfer TkRAS coordinates
-        2. Converts to scanner RAS coordinates using affine transforms
-        3. Saves surfaces compatible with electrode coordinate system
-        
-    Generated files:
-        - lh+rh_transform.pial: Combined bilateral surface
-        - rh_transform.pial: Right hemisphere only
-        - lh_transform.pial: Left hemisphere only
-        
-    Example:
-        >>> surf_files = make_surf_transforms("sub-RID0031")
-        >>> # Use surf_files for electrode visualization
-    """
-    names = ["lh+rh_transform.pial", "rh_transform.pial", "lh_transform.pial"]
-    assert (
-        sub_rid is not None or path is not None
-    ), "Either sub_rid or path must be specified"
-    if sub_rid:
-        fs_folder = ospj(BIDS_DIR, sub_rid, "derivatives/freesurfer")
-
-        if (not overwrite) and os.path.exists(ospj(fs_folder, "surf", "lh+rh.pial")):
-            return
-    elif path:
-        fs_folder = path
-
-        if (not overwrite) and os.path.exists(ospj(fs_folder, "surf", "lh+rh.pial")):
-            return
-    
-    if not overwrite:
-        return [ospj(fs_folder, "surf", name) for name in names]
-    
-    (coords_R, simplices_R) = nii.freesurfer.io.read_geometry(
-        ospj(fs_folder, "surf", "rh.pial")
-    )
-    (coords_L, simplices_L) = nii.freesurfer.io.read_geometry(
-        ospj(fs_folder, "surf", "lh.pial")
-    )
-
-    simplices_bi = np.concatenate([simplices_R, simplices_L + len(coords_R)])
-    coords_bi = np.concatenate([coords_R, coords_L])
-
-    T1_file = nii.load(ospj(fs_folder, "mri", "T1.mgz"))
-    vox_2_ras = T1_file.affine
-    tkras = T1_file.header.get_vox2ras_tkr()
-
-    return_paths = []
-    for c, s, name in zip(
-        [coords_bi, coords_R, coords_L],
-        [simplices_bi, simplices_R, simplices_L],
-        names,
-    ):
-        c_T = (
-            vox_2_ras @ (np.linalg.inv(tkras) @ np.vstack([c.T, np.ones(c.shape[0])]))
-        )[0:3, :].T
-        nii.freesurfer.io.write_geometry(ospj(fs_folder, "surf", name), c_T, s)
-        return_paths.append(ospj(fs_folder, "surf", name))
-
-    return return_paths
 
 def cohens_d(group1, group2):
     """
