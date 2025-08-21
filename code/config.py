@@ -25,12 +25,12 @@ plt.rcParams['ytick.minor.width'] = 1
 
 class Config:
     # Hardcoded paths
-    usr = "wojemann"
-    passpath = "/mnt/sauce/littlab/users/wojemann/woj_ieeglogin.bin"
-    datapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/RAW_DATA"
-    prodatapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA"
-    metapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/METADATA"
-    figpath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/figures"
+    usr = "wojemann" # change to your username
+    passpath = "/mnt/sauce/littlab/users/wojemann/woj_ieeglogin.bin" # change to your login path
+    datapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/RAW_DATA" # change to your raw data path
+    prodatapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA" # change to your processed data path
+    metapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/METADATA" # change to your metadata path
+    figpath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/figures" # change to your figure path
     
     # Patient data
     _patients = [
