@@ -27,7 +27,7 @@ William K.S. Ojemann [1,2], Caren Armstrong [3,4], Akash Pattnaik [1,2], Nina Pe
   - Create a virtual environment (recommended name: `stim-env`).
   - Install Python deps via the pinned `requirements.txt` at the repo root.
   - Additional packages not pinned in `requirements.txt` but required by the code:
-    - `ieeg` (Python client for iEEG.org). Install from source at `https://github.com/ieeg-portal/ieegpy/tree/master`
+    - `ieeg` (Python client for iEEG.org). Install from source at `https://github.com/ieeg-portal/ieegpy`
 - **GPU (optional)**:
   - The pinned wheels target CUDA 12.x (e.g., torch 2.2.0 + cu12 and TensorFlow 2.16.1). Ensure a compatible NVIDIA driver and CUDA runtime if using GPU. CPU-only runs are supported but slower.
 - **Jupyter**: JupyterLab 4.x is included in `requirements.txt` for running notebooks.
@@ -59,7 +59,7 @@ William K.S. Ojemann [1,2], Caren Armstrong [3,4], Akash Pattnaik [1,2], Nina Pe
     - RAW_DATA - *Path to raw data and localizations, this folder is not required for the quick run*
     - PROCESSED_DATA - *Path to processed data checkpoints, required*
     - METADATA - *Path to patient and seizure metadata, required*
-    - figures - *Path where figures will be saved while running scripts*
+    - figures - *Path to saved figures, required*
 - Run quickstart.sh
   ```bash
   
