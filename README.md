@@ -52,28 +52,19 @@ William K.S. Ojemann [1,2], Caren Armstrong [3,4], Akash Pattnaik [1,2], Nina Pe
   ```r
   install.packages(c("lme4","lmerTest","pbkrtest","dplyr","emmeans","multcomp","car","nlme"))
   ```
-- Download data checkpoints from 
-- Update config.json
-    Config file
-    There is an example config file with the required fields. you need to fill out the following paths:
-    * RAW_DATA
-    directory where the raw EEG recordings will be saved in iEEG-BIDS format
-    * PROCESSED_DATA
-    directory where derived metadata at the seizure level (annotations, probability matrices, etc.) and cohort level (annotations, checkpoints etc.)
-    * METADATA
-    directory where generated metadata such as seizure times, and raw manual annotations are stored
-    * IEEG_USR
-    username for accessing raw EEG files on iEEG.org
-    * IEEG_PWD
-    path to a binary file containing the password string for iEEG.org account
-    * patients
-    nested structure, list of dictionaries containing information about each patient in the cohort. The required fields are:
-        * ptID
-        patient name
-        * ieeg_ids
-        list of ieeg.org file ids associated with EEG recordings from that patient
-        * interictal_training
-        2 element list containing the ieeg_id and start time in that file (seconds) for the sample interictal time window (1 minute) to use as a baseline for stim seizure annotation
+- Download data checkpoints from (link here soon!) 
+- Update config.py
+    - usr *ieeg.org username*
+    - passpath *Path to ieeg.org login binary password file*
+    - RAW_DATA *Path to raw data and localizations, this folder is not required for the quick run*
+    - PROCESSED_DATA *Path to processed data checkpoints, required*
+    - METADATA *Path to patient and seizure metadata, required*
+    - figures *Path where figures will be saved while running scripts*
+- Run quickstart.sh
+  ```bash
+  
+  ```
+
           
 ## Data
 all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data into BIDS format from ieeg.org.
