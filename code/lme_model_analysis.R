@@ -181,9 +181,9 @@ if (!is.null(onset_agreements)) {
       group_by(model) %>%
       summarise(
         n = n(),
-        mean_dice = mean(dice, na.rm = TRUE),
-        median_dice = median(dice, na.rm = TRUE),
-        sd_dice = sd(dice, na.rm = TRUE),
+        mean_dice = mean(MCC, na.rm = TRUE),
+        median_dice = median(MCC, na.rm = TRUE),
+        sd_dice = sd(MCC, na.rm = TRUE),
         .groups = 'drop'
       )
     print(desc_stats_onset)
@@ -191,8 +191,8 @@ if (!is.null(onset_agreements)) {
     
     # Reshape data to wide format for difference calculations
     onset_wide <- onset_models_complete %>%
-      dplyr::select(patient, approximate_onset, model, dice) %>%
-      pivot_wider(names_from = model, values_from = dice)
+      dplyr::select(patient, approximate_onset, model, MCC) %>%
+      pivot_wider(names_from = model, values_from = MCC)
     
     cat("Wide format data shape:", nrow(onset_wide), "x", ncol(onset_wide), "\n")
     cat("Available models in wide format:", paste(setdiff(colnames(onset_wide), c("patient", "approximate_onset")), collapse = ", "), "\n\n")
@@ -377,9 +377,9 @@ if (!is.null(model_interrater_long)) {
       group_by(annotator) %>%
       summarise(
         n = n(),
-        mean_dice = mean(dice, na.rm = TRUE),
-        median_dice = median(dice, na.rm = TRUE),
-        sd_dice = sd(dice, na.rm = TRUE),
+        mean_phi = mean(Phi, na.rm = TRUE),
+        median_phi = median(Phi, na.rm = TRUE),
+        sd_phi = sd(Phi, na.rm = TRUE),
         .groups = 'drop'
       )
     print(desc_stats_2a)
@@ -387,8 +387,8 @@ if (!is.null(model_interrater_long)) {
     
     # Reshape data to wide format for difference calculations
     interrater_wide <- interrater_complete %>%
-      dplyr::select(patient, approximate_onset, annotator, dice) %>%
-      pivot_wider(names_from = annotator, values_from = dice)
+      dplyr::select(patient, approximate_onset, annotator, Phi) %>%
+      pivot_wider(names_from = annotator, values_from = Phi)
     
     cat("Wide format data shape:", nrow(interrater_wide), "x", ncol(interrater_wide), "\n")
     cat("Available annotators in wide format:", paste(setdiff(colnames(interrater_wide), c("patient", "approximate_onset")), collapse = ", "), "\n\n")
@@ -560,9 +560,9 @@ if (!is.null(stim_spont_data)) {
     group_by(stim) %>%
     summarise(
       n = n(),
-      mean_dice = mean(dice, na.rm = TRUE),
-      median_dice = median(dice, na.rm = TRUE),
-      sd_dice = sd(dice, na.rm = TRUE),
+      mean_MCC = mean(MCC, na.rm = TRUE),
+      median_MCC = median(MCC, na.rm = TRUE),
+      sd_MCC = sd(MCC, na.rm = TRUE),
       .groups = 'drop'
     )
   print(desc_stats_stim)
@@ -571,9 +571,9 @@ if (!is.null(stim_spont_data)) {
   # Mixed effects model for stim vs spontaneous
   cat("Mixed Effects Model for Stim vs Spontaneous Agreement:\n")
   if ("patient" %in% colnames(stim_spont_data) && length(unique(stim_spont_data$patient)) > 1) {
-    stim_model <- lmer(dice ~ stim + (1|patient), data = stim_spont_data)
+    stim_model <- lmer(MCC ~ stim + (1|patient), data = stim_spont_data)
   } else {
-    stim_model <- lm(dice ~ stim, data = stim_spont_data)
+    stim_model <- lm(MCC ~ stim, data = stim_spont_data)
   }
   
   # Model summary
