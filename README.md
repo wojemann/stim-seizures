@@ -1,9 +1,21 @@
 # stim-seizures
-Analyzing the relationsihp between low-frequency electrical stimulation induced seizure and spontaneous seizure networks.
-
 ## ⚡️ Can electrical stimulation replace spontaneous seizures?
+<img src="https://github.com/wojemann/stim-seizures/blob/stim_paper/stim_seizures_fig1.png" width="750">
+
 ### 👨‍🍳 Authors
+William K.S. Ojemann [1,2], Caren Armstrong [3,4], Akash Pattnaik [1,2], Nina Petillo [1,5], Mariam Josyula [1,5], Alexander Daum [6], Daniel J. Zhou [1,5], Joshua LaRocque [1,5,7], Jacob Korzun [5], Catherine V. Kulick-Soper [5], Eli J. Cornblath [1,5], Sarita Damaraju [1,8], Russell T. Shinohara [9,10], Eric D. Marsh [3], Kathryn A. Davis [1,2,5], Brian Litt [1,2,5], Erin C. Conrad [1,5]
+
 ### 🏦 Affiliations
+1. Center for Neuroengineering and Therapeutics, University of Pennsylvania, Philadelphia, PA 19104, USA
+2. Department of Bioengineering, University of Pennsylvania, Philadelphia, PA 19104, USA
+3. Children's Hospital of Philadelphia, Division of Neurology, Philadelphia, PA 19104, USA
+4. Department of Neurology, University of California, Davis, Sacramento, CA, 95817, USA	
+5. Department of Neurology, University of Pennsylvania, Philadelphia, PA 19104, USA
+6. Department of Neuroscience, University of Pennsylvania, Philadelphia, PA 19104, USA
+7. Department of Neurology, Medical College of Wisconsin, Milwaukee, WI 53226, USA
+8. Perelman School of Medicine, University of Pennsylvania, Philadelphia, PA 19104, USA
+9. Penn Statistics in Imaging and Visualization Center, Department of Biostatistics, Epidemiology and Informatics, University of Pennsylvania, Philadelphia, PA 19104, USA
+10. AI2D: Center for AI and Data Science For Integrated Diagnostics, University of Pennsylvania, Philadelphia, PA 19104, USA
 
 ### 🧪 Preprint: will be made available upon preprint!
 ### 🔬 Manuscript: will be made available upon publication!
@@ -15,58 +27,47 @@ Analyzing the relationsihp between low-frequency electrical stimulation induced 
   - Create a virtual environment (recommended name: `stim-env`).
   - Install Python deps via the pinned `requirements.txt` at the repo root.
   - Additional packages not pinned in `requirements.txt` but required by the code:
-    - `ieeg` (Python client for iEEG.org). Install from source at 
-    - `DSOSD` (provides the `DSOSD.model.NDD` class used by the detection pipeline). Install from its source per that project’s instructions.
-- **GPU (optional but recommended for deep models)**:
+    - `ieeg` (Python client for iEEG.org). Install from source at `https://github.com/ieeg-portal/ieegpy`
+- **GPU (optional)**:
   - The pinned wheels target CUDA 12.x (e.g., torch 2.2.0 + cu12 and TensorFlow 2.16.1). Ensure a compatible NVIDIA driver and CUDA runtime if using GPU. CPU-only runs are supported but slower.
 - **Jupyter**: JupyterLab 4.x is included in `requirements.txt` for running notebooks.
-- **MNE-BIDS and neuroimaging**: `mne`, `mne-bids`, `nibabel`, `nilearn` are pinned and required for BIDS I/O and analyses.
-- **Stats/ML libraries**: `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `pingouin`, `seaborn`, `matplotlib`, `fooof`, `kneed`, `bctpy`, and others are pinned in `requirements.txt`.
+- **MNE-BIDS**: `mne`, `mne-bids` are pinned and required for BIDS I/O and analyses.
+- **Stats/ML libraries**: `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `seaborn`, `matplotlib`, and others are pinned in `requirements.txt`.
 - **R (for mixed-effects models and stats in `code/*.R`)**: R ≥4.1 with the following packages installed:
-  - `lme4`, `lmerTest`, `pbkrtest`, `dplyr`, `ggplot2`, `emmeans`, `multcomp`, `car`, `nlme`
+  - `lme4`, `lmerTest`, `pbkrtest`, `dplyr`, `emmeans`, `multcomp`, `car`, `nlme`
 - **Access to iEEG.org**:
   - An iEEG.org account is required to download raw EEG.
   - The config expects `IEEG_USR` (username) and an `IEEG_PWD` path to a binary file containing the password.
 
-### Quick start
+## Quick start
 - Create and activate the environment, then install Python deps:
   ```bash
   python3.10 -m venv stim-env
   source stim-env/bin/activate
   pip install --upgrade pip
   pip install -r requirements.txt
-  pip install ieeg  # if not already present in your env
-  # Install DSOSD from its source if your workflow uses NDD: DSOSD.model.NDD
+  pip install git@github.com:ieeg-portal/ieegpy.git  # if not already present in your env
   ```
 - Install R dependencies (one-time):
   ```r
-  install.packages(c("lme4","lmerTest","pbkrtest","dplyr","ggplot2","emmeans","multcomp","car","nlme"))
+  install.packages(c("lme4","lmerTest","pbkrtest","dplyr","emmeans","multcomp","car","nlme"))
   ```
-- Download data checkpoints
-- Update config.json
-    Config file
-    There is an example config file with the required fields. you need to fill out the following paths:
-    * RAW_DATA
-    directory where the raw EEG recordings will be saved in iEEG-BIDS format
-    * PROCESSED_DATA
-    directory where derived metadata at the seizure level (annotations, probability matrices, etc.) and cohort level (annotations, checkpoints etc.)
-    * METADATA
-    directory where generated metadata such as seizure times, and raw manual annotations are stored
-    * IEEG_USR
-    username for accessing raw EEG files on iEEG.org
-    * IEEG_PWD
-    path to a binary file containing the password string for iEEG.org account
-    * patients
-    nested structure, list of dictionaries containing information about each patient in the cohort. The required fields are:
-        * ptID
-        patient name
-        * ieeg_ids
-        list of ieeg.org file ids associated with EEG recordings from that patient
-        * interictal_training
-        2 element list containing the ieeg_id and start time in that file (seconds) for the sample interictal time window (1 minute) to use as a baseline for stim seizure annotation
+- Download data checkpoints from (link here soon!) 
+- Update config.py
+    - usr - *ieeg.org username*
+    - passpath - *Path to ieeg.org login binary password file*
+    - RAW_DATA - *Path to raw data and localizations, this folder is not required for the quick run*
+    - PROCESSED_DATA - *Path to processed data checkpoints, required*
+    - METADATA - *Path to patient and seizure metadata, required*
+    - figures - *Path to saved figures, required*
+- Run quickstart.sh
+  ```bash
+  
+  ```
+
           
 ## Data
-all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data.
+all raw EEG data is publically available on iEEG.org and will be uploaded in BIDS format as a publcially available dataset on pennsive.io upon publication. The script BIDS_seizure_saving.py contains code used to save the raw EEG data into BIDS format from ieeg.org.
 
 ## Analysis pipeline
 * annotation_analysis_and_consensys.ipynb
