@@ -32,7 +32,6 @@ fastjsonschema==2.19.1
 filelock==3.13.1
 flatbuffers==24.3.25
 fonttools==4.41.1
-fooof==1.0.0
 fqdn==1.5.1
 fsspec==2024.2.0
 gast==0.5.4
@@ -43,7 +42,6 @@ h5py==3.11.0
 httpcore==1.0.2
 httpx==0.26.0
 idna==3.4
-ieeg @ git+https://github.com/ieeg-portal/ieegpy.git@080bfa42a8503380ef164b5e7b116613f75073bb
 ipykernel==6.25.0
 ipython==8.14.0
 ipywidgets==8.1.2
@@ -69,8 +67,6 @@ jupyterlab_server==2.25.2
 jupyterlab_widgets==3.0.10
 keras==3.3.3
 kiwisolver==1.4.4
-kneed==0.8.5
-krippendorff==0.6.1
 libclang==18.1.1
 lxml==4.9.3
 Markdown==3.6
@@ -90,8 +86,6 @@ nbconvert==7.16.0
 nbformat==5.9.2
 nest-asyncio==1.5.6
 networkx==3.2.1
-nibabel==5.1.0
-nilearn==0.10.1
 notebook==7.1.0
 notebook_shim==0.2.3
 numpy==1.25.1
@@ -121,7 +115,6 @@ patsy==0.5.6
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==10.0.0
-pingouin==0.5.4
 platformdirs==3.9.1
 plotly==5.24.1
 pooch==1.7.0

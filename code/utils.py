@@ -2202,7 +2202,7 @@ def calculate_spread_similarity(annots, first_annot='sz_chs', second_annot='sz_c
                     continue
                 if len(sz_j['sz_times']) == 0:
                     continue
-
+                    
                 ch_time_mask2 = np.array(sz_j['sz_times']) < spread_thresh
                 ch_mask2 = np.isin(sz_j[sources], np.array(sz_j[second_annot])[ch_time_mask2])
 
