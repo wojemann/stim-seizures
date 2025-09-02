@@ -27,10 +27,10 @@ class Config:
     # Hardcoded paths
     usr = "wojemann" # change to your username
     passpath = "/mnt/sauce/littlab/users/wojemann/woj_ieeglogin.bin" # change to your login path
-    datapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/RAW_DATA" # change to your raw data path
-    prodatapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA" # change to your processed data path
-    metapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/METADATA" # change to your metadata path
-    figpath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/figures" # change to your figure path
+    datapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/RAW_DATA" # change to your raw data path
+    prodatapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/PROCESSED_DATA" # change to your processed data path
+    metapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/METADATA" # change to your metadata path
+    figpath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/FIGURES" # change to your figure path
     
     # Patient data
     _patients = [
@@ -55,17 +55,14 @@ class Config:
         {"ptID": "HUP288", "ieeg_ids": ["HUP288_CCEP","HUP288_phaseII"], "interictal_training": ["HUP288_phaseII", 25015]},
         {"ptID": "CHOP005", "ieeg_ids": ["CHOPCCEP_005","CHOP005"], "interictal_training": ["CHOP005",14190.17]},
         {"ptID": "CHOP010", "ieeg_ids": ["CHOPCCEP_010","CHOP010a","CHOP010b","CHOP010c"], "interictal_training": ["CHOP010a",10845.95]},
-        {"ptID": "CHOP015", "ieeg_ids": ["CHOPCCEP_015"], "interictal_training": []},
         {"ptID": "CHOP024", "ieeg_ids": ["CHOPCCEP_024","CHOP024"], "interictal_training": ["CHOP024",112138.27]},
         {"ptID": "CHOP026", "ieeg_ids": ["CHOPCCEP_026","CHOP026"], "interictal_training": ["CHOP026",76411.33]},
         {"ptID": "CHOP028", "ieeg_ids": ["CHOPCCEP_028","CHOP028"], "interictal_training": ["CHOP028",7517.56]},
         {"ptID": "CHOP035", "ieeg_ids": ["CHOPCCEP_035","CHOP035"], "interictal_training": ["CHOP035",82282.00]},
         {"ptID": "CHOP037", "ieeg_ids": ["CHOPCCEP_037","CHOP037"], "interictal_training": ["CHOP037",58173.01]},
-        {"ptID": "CHOP038", "ieeg_ids": ["CHOPCCEP_038","CHOP038"], "interictal_training":[]},
         {"ptID": "CHOP041", "ieeg_ids": ["CHOPCCEP_041","CHOP041"], "interictal_training": ["CHOP041",112959.70]},
         {"ptID": "CHOP044", "ieeg_ids": ["CHOPCCEP_044","CHOP044"], "interictal_training": ["CHOP044",4070.79]},
         {"ptID": "CHOP045", "ieeg_ids": ["CHOPCCEP_045","CHOP045"], "interictal_training": ["CHOP045",13156.41]},
-        {"ptID": "CHOP046", "ieeg_ids": ["CHOPCCEP_046","CHOP046"], "interictal_training": []},
         {"ptID": "CHOP049", "ieeg_ids": ["CHOPCCEP_049","CHOP049"], "interictal_training": ["CHOP049",8313.95]}
     ]
     
