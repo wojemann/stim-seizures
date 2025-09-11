@@ -132,13 +132,13 @@ def main():
             data_np_ds = sc.signal.resample(data_np,signal_len,axis=1)
             fs = TARGET
 
-
             # save the data
             # run is the iEEG file number
             # task is ictal with the start time in seconds appended
             data_info = mne.create_info(
                 ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
             )
+            
             raw = mne.io.RawArray(
                 data_np_ds / 1e6,  # mne needs data in volts,
                 data_info,
