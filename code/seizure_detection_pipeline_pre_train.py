@@ -98,6 +98,7 @@ def prepare_segment(data, fs = 256,train_win = 12, pred_win = 1, w_size = 1, w_s
     win_times : numpy.ndarray, optional
         Window start times if ret_time=True
     """
+    
     data_ch = data.columns.to_list()
     data_np = data.to_numpy()
     train_win = 12
