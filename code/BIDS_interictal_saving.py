@@ -11,15 +11,15 @@ from tqdm import tqdm
 # BIDS imports
 import mne
 from mne_bids import BIDSPath, write_raw_bids
-
+from config import Config
 
 # Loading CONFIG
-usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
+usr,passpath,datapath,prodatapath,figpath,metapath,patient_table,rid_hup,pt_list = Config.deal(['usr','passpath','datapath','prodatapath','figpath','metapath','patient_table','rid_hup','pt_list'])
 
 # Setting Seed
 np.random.seed(171999)
 
-TARGET = 512
+TARGET = 256
 OVERWRITE = True
 
 def main():
@@ -50,8 +50,7 @@ def main():
         if len(row.interictal_training) == 0:
             continue
         pt = row.ptID
-        if pt != 'HUP275':
-            continue
+
         ieeg_name = row.interictal_training[0]
         onset = row.interictal_training[1]
         offset = onset + 60
@@ -110,6 +109,7 @@ def main():
             data_info,
             verbose=False,
         )
+        
         raw.set_channel_types(ch_types.type)
         annots = mne.Annotations(
             onset=0, # seizure starts 60 seconds after the start of the clip

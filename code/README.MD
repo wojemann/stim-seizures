@@ -1,11 +1,8 @@
-# Quantitative Analysis of Stimulation Induced Seizures
-## Script Order
-* Set up the config file according to the example config
-* Run the metadata_notebook.ipynb to extract seizure annotations from iEEG (done)
-* BIDS_seizure_saving.py
-* BIDS_interictal_saving.py
-* annotation_analysis_and_consensus.ipynb
-* seizure_detection_pipeline.py
-* generate_model_annotations.py
-* optimize_model_thresholds.ipynb
-* model_prediction_analysis.ipynb
+# Unsupervised seizure detection with neural dynamic divergence
+## Script order
+* BIDS_seizure_saving
+* * saving annotated seizures to compare models against interrater reliability
+* BIDS_interictal_saving
+* * saving interictal clips associated with the saved seizures for the stim seizures
+* seizure_detection_pipeline_dynasd.py
+* * running the different seizure detection algorithms on the set of annotated seizures with human annotations
