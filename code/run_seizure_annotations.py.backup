@@ -1,0 +1,279 @@
+# File system imports
+import sys
+import os
+from os.path import join as ospj
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow INFO/WARN messages
+os.environ['TF_TRT_DISABLED'] = '1'       # Silence TF-TRT warnings if TensorRT not installed
+
+# Scientific imports
+import numpy as np
+import pandas as pd
+from scipy.linalg import hankel
+from tqdm import tqdm
+from sklearn.preprocessing import RobustScaler
+
+# Plotting imports
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+import seaborn as sns
+
+# Deep learning imports
+from tensorflow.config.experimental import set_memory_growth, list_physical_devices
+import tensorflow as tf
+from absl import logging as absl_logging
+
+# Suppress TensorFlow logging
+absl_logging.set_verbosity(absl_logging.ERROR)
+tf.get_logger().setLevel('ERROR')
+
+# Configure GPU memory growth to prevent allocation issues
+try:
+    for _gpu in list_physical_devices('GPU'):
+        set_memory_growth(_gpu, True)
+except Exception:
+    pass
+
+# Utility imports
+from utils import preprocess_for_detection, get_data_from_bids, index_of_union_threshold, clean_labels
+
+# Parallel execution
+from pqdm.threads import pqdm
+
+# Get the project root (parent directory of examples/)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
+
+if dynasd_root not in sys.path:
+    sys.path.insert(0, dynasd_root)
+
+from DynaSD import GIN, LiNDDA, MINDD, LiRNDDA, ABSSLP, IMPRINT, WVNT
+from config import Config
+
+# Get paths from config 
+datapath,prodatapath,figpath,metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
+
+
+# Set default colormap for visualizations
+plt.rcParams['image.cmap'] = 'magma'
+
+# Global configuration
+OVERWRITE = False  # Whether to overwrite existing probability matrix files
+
+def run_model_task(params: tuple) -> list:
+    """
+    Parallelizable worker: loads seizure, preprocesses, then evaluates all models for that seizure.
+
+    Parameters
+    ----------
+    task : tuple
+        (
+            patient: str,
+            onset_run: str,
+            montage: str,
+            onset_time_sec: float,
+            model_classes: list[type]
+        )
+
+    Returns
+    -------
+    list[dict]
+        One dict per model with summary metrics for this seizure.
+    """
+    (
+        patient,
+        onset_run,
+        onset_labels,
+        montage,
+        onset_time_sec,
+        model_classes,
+    ) = params
+
+    # Load seizure recording
+    seizure, fs_raw, _, _, task, run = get_data_from_bids(
+        ospj(datapath, "BIDS"), patient, onset_run, return_path=True, verbose=0
+    )
+
+    # Clean labels
+    seizure.columns = clean_labels(seizure.columns, patient)
+
+    # Initial mask from first 60s
+    _, _, channel_mask = preprocess_for_detection(
+        seizure.iloc[: 60 * fs_raw, :],
+        fs_raw,
+        montage,
+        target=fs_raw,
+        wavenet=False,
+        pre_mask=None,
+    )
+
+    results: list[dict] = []
+    for model_class in model_classes:
+
+        # Get model name
+        model_name = getattr(model_class, '__name__','UNKNOWN')
+        if model_class == LiNDDA:
+            model_name = 'LiNDDA_121'
+
+        # Create output directory
+        out_dir = ospj(prodatapath, 'sz_prob', patient)
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = ospj(out_dir, f"{patient}_task-{task}_run-{run}_mdl-{model_name}_sz_prob.pkl")
+
+        # # Check if output file already exists
+        if os.path.exists(out_path) and not OVERWRITE:
+            sz_prob = pd.read_pickle(out_path)
+            sz_prob_times = sz_prob.pop('time')
+            onset_mask = [ch.split('-')[0] in onset_labels for ch in sz_prob.columns]
+
+        else:
+        # Preprocess seizure
+            wavecheck = model_class == WVNT
+            seizure_pre, fs = preprocess_for_detection(
+                seizure,
+                fs_raw,
+                montage,
+                target=fs_raw,
+                wavenet=wavecheck,
+                pre_mask=channel_mask,
+            )
+
+            art_channel_mask = seizure_pre.loc[120*fs:,:].abs().max() <= (np.median(seizure_pre.loc[120*fs:,:].abs().max())*50)
+            seizure_nart = seizure_pre.loc[:,art_channel_mask]
+
+            onset_mask = [ch.split('-')[0] in onset_labels for ch in seizure_nart.columns]
+
+            if model_class == WVNT:
+                model = model_class(fs=fs, w_size=1, w_stride = 0.125, 
+                model_path = '/mnt/sauce/littlab/users/wojemann/dynasd_data/CHECKPOINTS/WaveNet/v111.hdf5',
+                verbose = False,
+                batch_size = 512)
+            elif model_class == LiNDDA:
+                model = LiNDDA(
+                fs=fs,
+                w_size=1,
+                w_stride = 0.125,
+                sequence_length = 1,
+                forecast_length = 1,
+                patience = 3,
+                lr = 0.0005,
+                val_split = 0.1,
+                early_stopping = True,
+                num_epochs = 500,
+                batch_size = 32,
+                verbose = False,
+                use_cuda = False,
+            )
+            else:
+                model = model_class(fs=fs, w_size=1, w_stride=0.125)
+
+            model.fit(seizure_nart.iloc[: fs * 60])
+
+            sz_prob = model(seizure_nart)
+            sz_prob_times = model.get_win_times(len(seizure_nart))
+            sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
+            sz_prob_df.to_pickle(out_path)
+
+        if len(np.unique(onset_mask)) == 2:
+            onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
+            onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
+            onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
+            optimal_threshold, opt_se, opt_sp, auc = index_of_union_threshold(
+                onset_mask, onset_prob
+            )
+
+            results.append(
+                dict(
+                    patient=patient,
+                    onset=int(onset_run),
+                    model=model_name,
+                    auc=auc,
+                    sens=opt_se,
+                    spec=opt_sp,
+                    threshold=optimal_threshold,
+                )
+            )
+        else:
+            results.append(
+                dict(
+                    patient=patient,
+                    onset=int(onset_run),
+                    model=model_name,
+                    auc=np.nan,
+                    sens=np.nan,
+                    spec=np.nan,
+                    threshold=np.nan,
+                )
+            )
+
+    return results
+
+
+def main():
+    """
+    Main seizure detection pipeline using pre-trained models.
+    
+    Workflow:
+    1. Load configuration and seizure metadata from BIDS format
+    2. Configure GPU settings for optimal performance  
+    3. For each patient with available data:
+       - Load interictal training data from BIDS
+       - Clean electrode labels and localize neural channels
+       - For each seizure recording:
+         - Train model on interictal/early seizure data
+         - Generate predictions across full seizure recording
+         - Save probability matrices and visualizations
+    4. Support three detection algorithms: LSTM, AbsSlope, WaveNet
+    
+    Models are trained patient-specifically on interictal data and applied
+    to detect seizure onset patterns in ictal recordings.
+    """
+    # Configure GPU memory growth for TensorFlow/PyTorch compatibility
+    gpus = list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(e)
+    
+    # Load seizure metadata from BIDS processing
+    seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
+    seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
+    
+    # Detection parameters
+    onset_time = 120          # Seizure onset time in recording (seconds)
+    montage = 'bipolar'       # Electrode montage for preprocessing
+    all_models = [ABSSLP,IMPRINT,WVNT]  # Models to run
+
+    # Build all tasks across all patients and seizures (models are handled inside)
+    tasks = []
+    
+    # Iterating through each patient that we have annotations for
+    pbar = tqdm(seizures_df.iterrows(),total=len(seizures_df))
+    for _,row in pbar:
+        pt = row.Patient
+        sz = row.onset
+        pbar.set_description(desc=f"Patient: {pt} | Seizure: {sz}",refresh=True)
+        onset_run = str(int(row.onset))
+        onset_labels = clean_labels([l.strip() for l in row.SOZ.split(',')], pt)
+        tasks.append((pt, onset_run, onset_labels, montage, onset_time, all_models))
+
+    # Execute all tasks in parallel (each task loads seizure and runs all models)
+    # x = run_model_task(tasks[0])
+    results_nested = pqdm(tasks, run_model_task, n_jobs=12)
+
+    # Filter out exceptions and flatten list of lists into a single list of dicts
+    flat_results = []
+    for result in results_nested:
+        if isinstance(result, Exception):
+            flat_results.append(dict(patient=None,onset=None,model=None,auc=np.nan,sens=np.nan,spec=np.nan,threshold=np.nan))
+            print(f"Task failed with error: {result}")
+            continue
+        flat_results.append(result)
+
+    result_df = pd.DataFrame(flat_results)
+    result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results.csv"),index=False)
+    
+if __name__ == "__main__":
+    main()

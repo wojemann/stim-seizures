@@ -58,11 +58,15 @@ from utils import *
 from stim_seizure_preprocessing_utils import *
 
 import sys
-sys.path.append('/users/wojemann/DynaSD')
-from DynaSD import NDD,GIN,LiNDDA,MINDA
+# Get the project root (parent directory of examples/)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
+
+if dynasd_root not in sys.path:
+    sys.path.insert(0, dynasd_root)
+
+from DynaSD import GIN, LiNDDA, MINDD, LiRNDDA, AbsSlope, IMPRINT, WAVENET
 from config import Config
-
-
 
 # Get paths from config
 datapath = Config.datapath

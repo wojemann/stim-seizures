@@ -1,11 +1,13 @@
 ### SAVING INTERICTAL TRAINING DATA IN BIDS TO LEIF
+from pickle import FALSE
 import numpy as np
 import pandas as pd
 from os.path import join as ospj
-from utils import *
+from utils import clean_labels, check_channel_types, get_iEEG_data
 import scipy as sc
 
 from tqdm import tqdm
+import warnings
 
 
 # BIDS imports
@@ -20,7 +22,7 @@ usr,passpath,datapath,prodatapath,figpath,metapath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 256
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -41,27 +43,57 @@ def main():
     # Loading in all seizure data
     # seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
-
-    for _,row in tqdm(
-        patient_table.iterrows(),
-        total=len(patient_table),
+    # seizures_df = pd.read_csv(ospj(metapath,'validation_metadata','metadata_v6.csv'))
+    patient_list = seizures_df.Patient.sort_values().unique()
+    for pt in tqdm(
+        patient_list,
+        total=len(patient_list),
         desc="Patients",
         position=0,
     ):
-        if len(row.interictal_training) == 0:
-            continue
-        pt = row.ptID
-
-        ieeg_name = row.interictal_training[0]
-        onset = row.interictal_training[1]
+        
+        # if pt not in ['HUP074']:#('HUP065','HUP078','HUP126','HUP221','HUP276'):
+        #     continue
+        pt_seizures = seizures_df[seizures_df.Patient == pt].sort_values(by='onset')
+        try:
+            first_spaces = []
+            id_count = 0
+            while (len(first_spaces)==0) and (id_count < 10):
+                ieeg_name = pt_seizures.IEEGname.iloc[id_count]
+                if 'CCEP' in ieeg_name:
+                    id_count += 1
+                    continue
+                ieeg_onsets = pt_seizures[pt_seizures.IEEGname == ieeg_name].onset.to_list()
+                ieeg_onsets.insert(0,0)
+                first_spaces = np.argwhere(np.diff(ieeg_onsets) > 2 * 60 * 60)[0]
+                id_count += 1
+            
+            first_idx = first_spaces[0]
+            if pt in ['HUP074','HUP070','HUP147','HUP206','HUP207']:
+                first_idx = 1
+            onset = (ieeg_onsets[first_idx] + ieeg_onsets[first_idx + 1])/2 # take time between the two seizures            
+        except Exception as e:
+            print(f"Failed to calculate onset time for patient {pt}: {str(e)}")
+            onset = 10000
+        if pt == 'HUP078':
+            onset = 171114
+        if pt == 'HUP215':
+            ieeg_name = 'HUP215_phaseII_D03'
+            onset = 371515
         offset = onset + 600
+
+        task = f"interictal{int(onset)}"
+        # if pt in ('HUP065','HUP078','HUP126','HUP221','HUP276'):
+        #     offset = onset + 1200
+        #     task = f"validation{int(onset)}"
+        
         # Throwing error because there are no seizures that exist for this patient. So one option would be to save BIDS IEEGIDs into the config and access that from there.
         ieegid = int(seizures_df.loc[seizures_df.IEEGname == ieeg_name,'IEEGID'].mode())
         # get bids path
         clip_bids_path = bids_path.copy().update(
             subject=pt,
             run=ieegid,
-            task=f"interictal{int(onset)}",
+            task=task,
         )
 
         # check if the file already exists, if so, skip
@@ -121,7 +153,6 @@ def main():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             raw.set_annotations(annots)
-
             write_raw_bids(
                 raw,
                 clip_bids_path,

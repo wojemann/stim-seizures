@@ -54,6 +54,7 @@ import scipy as sc
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import NMF
 from sklearn.utils import resample
+from sklearn.metrics import roc_curve,auc
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -238,7 +239,8 @@ def clean_labels(channel_li: list, pt: str) -> list:
         i = i.replace("-", "")
         i = i.replace("GRID", "G")  # mne has limits on channel name size
         # standardizes channel names
-        pattern = re.compile(r"([A-Za-z0-9]+?)(\d+)$")
+        # pattern = re.compile(r"^(?:EEG\s+)?([A-Za-z0-9]+)\s*([0-9]+)(?:\s*Ref)?$", re.IGNORECASE)
+        pattern = re.compile(r"^(?:EEG\s+)?([A-Za-z]+)\s*([0-9]+)(?:\s*Ref)?$", re.IGNORECASE)
         regex_match = pattern.match(i)
 
         if regex_match is None:
@@ -249,7 +251,8 @@ def clean_labels(channel_li: list, pt: str) -> list:
         #     continue
         lead = regex_match.group(1).replace("EEG", "").strip()
         contact = int(regex_match.group(2))
-
+        
+        
         if pt in ("HUP75_phaseII", "HUP075", "sub-RID0065"):
             if lead == "Grid":
                 lead = "G"
@@ -278,7 +281,6 @@ def clean_labels(channel_li: list, pt: str) -> list:
         if pt in ("HUP93_phaseII", "HUP093", "sub-RID0050"):
             if lead.startswith("G"):
                 lead = "G"
-    
         if pt in ("HUP89_phaseII", "HUP089", "sub-RID0024"):
             if lead in ("GRID", "G"):
                 lead = "RG"
@@ -1138,7 +1140,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     
     # Channel rejection
     if pre_mask is None:
-        mask,_ = detect_bad_channels(data_bp_np.T*1e3,fs)
+        mask,_ = detect_bad_channels(data_bp_np.T,fs)
         data_bp_np = data_bp_np[mask,:]
         mask_list = [ch for ch in bp_ch[~mask]]
         bp_ch = bp_ch[mask]
@@ -1151,18 +1153,22 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     if wavenet:
         target=128
         data_bp_notch = notch_filter(data_bp_np,fs)
-        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=3,hi=127)
+        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=120)
         signal_len = int(data_bp_filt.shape[1]/fs*target)
         data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
         fsd = int(target)
     else:
         # Bandpass filtering
         data_bp_notch = notch_filter(data_bp_np,fs)
-        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=3,hi=100)
+        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=120)
         # Down sampling
-        signal_len = int(data_bp_filt.shape[1]/fs*target)
-        data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
-        fsd = int(target)
+        if fs != target:
+            signal_len = int(data_bp_filt.shape[1]/fs*target)
+            data_bpd = sc.signal.resample(data_bp_filt,signal_len,axis=1).T
+            fsd = int(target)
+        else:
+            data_bpd = data_bp_filt.T
+            fsd = fs
     data_white = ar_one(data_bpd)
     data_white_df = pd.DataFrame(data_white,columns = bp_ch)
     if pre_mask is None:
@@ -1583,3 +1589,102 @@ def in_parallel(func, data, verbose=False, n_jobs = -1):
         print(f"Processing {len(data)} items in parallel using {threads} threads")
 
     return Parallel(n_jobs=threads)(delayed(func)(item) for item in data)
+
+######################### STATISTICS ############################################################
+def index_of_union_threshold(y_true: np.ndarray, 
+                           y_scores: np.ndarray, 
+                           pos_label: int = None):
+    """
+    Find optimal ROC threshold using the Index of Union (IU) method.
+    
+    This method defines the optimal cut-point as the point where sensitivity and 
+    specificity are simultaneously closest to the AUC value, with minimum difference 
+    between sensitivity and specificity as a tiebreaker.
+    
+    Based on: Unal, I. (2017). "Defining an Optimal Cut-Point Value in ROC Analysis: 
+    An Alternative Approach." Computational and Mathematical Methods in Medicine.
+    
+    Parameters:
+    -----------
+    y_true : array-like of shape (n_samples,)
+        True binary labels (0 or 1)
+    y_scores : array-like of shape (n_samples,)
+        Target scores (higher scores indicate positive class)
+    pos_label : int, optional
+        The label of the positive class (default: 1 if binary, max value otherwise)
+        
+    Returns:
+    --------
+    optimal_threshold : float
+        The optimal threshold value
+    optimal_sensitivity : float
+        Sensitivity at the optimal threshold
+    optimal_specificity : float
+        Specificity at the optimal threshold  
+    auc_value : float
+        The area under the ROC curve
+        
+    Examples:
+    ---------
+    >>> import numpy as np
+    >>> from sklearn.datasets import make_classification
+    >>> from sklearn.model_selection import train_test_split
+    >>> from sklearn.linear_model import LogisticRegression
+    >>> 
+    >>> # Generate sample data
+    >>> X, y = make_classification(n_samples=1000, n_features=20, random_state=42)
+    >>> X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    >>> 
+    >>> # Train a model
+    >>> model = LogisticRegression()
+    >>> model.fit(X_train, y_train)
+    >>> y_scores = model.predict_proba(X_test)[:, 1]
+    >>> 
+    >>> # Find optimal threshold
+    >>> threshold, sensitivity, specificity, auc_val = index_of_union_threshold(y_test, y_scores)
+    >>> print(f"Optimal threshold: {threshold:.4f}")
+    >>> print(f"Sensitivity: {sensitivity:.4f}, Specificity: {specificity:.4f}")
+    >>> print(f"AUC: {auc_val:.4f}")
+    """
+    
+    # Convert to numpy arrays
+    y_true = np.asarray(y_true)
+    y_scores = np.asarray(y_scores)
+    
+    # Validate inputs
+    if len(y_true) != len(y_scores):
+        raise ValueError("y_true and y_scores must have the same length")
+    
+    if len(np.unique(y_true)) != 2:
+        raise ValueError("y_true must contain exactly 2 unique values (binary classification)")
+    
+    # Get ROC curve components
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores, pos_label=pos_label)
+    
+    # Calculate AUC
+    auc_value = auc(fpr, tpr)
+    
+    # Calculate sensitivity and specificity for each threshold
+    sensitivity = tpr
+    specificity = 1 - fpr
+    
+    # Calculate IU metric: |Se - AUC| + |Sp - AUC|
+    iu_values = np.abs(sensitivity - auc_value) + np.abs(specificity - auc_value)
+    
+    # Find candidates with minimum IU value
+    min_iu = np.min(iu_values)
+    candidates = np.where(iu_values == min_iu)[0]
+    
+    # If multiple candidates, choose the one with minimum |Se - Sp|
+    if len(candidates) > 1:
+        se_sp_diff = np.abs(sensitivity[candidates] - specificity[candidates])
+        best_idx = candidates[np.argmin(se_sp_diff)]
+    else:
+        best_idx = candidates[0]
+    
+    # Get optimal values
+    optimal_threshold = thresholds[best_idx]
+    optimal_sensitivity = sensitivity[best_idx]
+    optimal_specificity = specificity[best_idx]
+    
+    return optimal_threshold, optimal_sensitivity, optimal_specificity, auc_value

@@ -21,7 +21,7 @@ usr,passpath,datapath,prodatapath,figpath,metapath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 256
-OVERWRITE = False
+OVERWRITE = True
 
 def main():
     # Setting up BIDS targets
@@ -40,16 +40,11 @@ def main():
     }
 
     # Loading in all seizure data
-    seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information - LF_seizure_annotation.csv"))
-    seizures_df.dropna(axis=0,how='all',inplace=True)
-    seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)
-    seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)
-    seizures_df['approximate_onset'].fillna(seizures_df['Other_onset_description'],inplace=True)
+    seizures_df = pd.read_csv(ospj(metapath,"validation_metadata","metadata_v6.csv"))
+
     # drop HF stim induced seizures
-    # adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
-    # seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
-    seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
-    buffer = 120 # seconds before and after seizure to save
+    prebuffer = 180 # seconds before and after seizure to save
+    postbuffer = 120 # seconds after seizure to save
     for pt, group in tqdm(
         seizures_df.groupby('Patient'),
         total=seizures_df.Patient.nunique(),
@@ -61,7 +56,7 @@ def main():
         group.loc[ieegid.index,'IEEGID'] = ieegid
         
         # sort by start time
-        group = group.sort_values(["IEEGID","approximate_onset"])
+        group = group.sort_values(["IEEGID","onset"])
         group.reset_index(inplace=True, drop=True)
         
         for _, row in tqdm(
@@ -69,12 +64,10 @@ def main():
         ):
             if row.stim == 2: # Skip high frequency induced seizures
                 continue
-            if row.to_annotate == 0 or np.isnan(row.to_annotate):
-                continue
 
             task_names = ['ictal','stim']
-            onset = row.approximate_onset
-            offset = row.end
+            onset = row.onset
+            offset = row.offset
             # get bids path
             sz_clip_bids_path = bids_path.copy().update(
                 subject=pt,
@@ -96,11 +89,14 @@ def main():
 
             # get the duration and clip it to 5 mins
             duration = offset-onset
+            if duration > 300:
+                print(f"Skipping {pt} {row.IEEGname} {onset} {offset} because duration is {duration} seconds")
+                continue
 
             data, fs = get_iEEG_data(
                 iEEG_filename=row["IEEGname"],
-                start_time_usec=(onset - buffer) * 1e6, # start buffer seconds before the seizure
-                stop_time_usec=(offset + buffer) * 1e6,
+                start_time_usec=(onset - prebuffer) * 1e6, # start buffer seconds before the seizure
+                stop_time_usec=(offset + postbuffer) * 1e6,
                 **ieeg_kwargs,
             )
 
@@ -138,7 +134,7 @@ def main():
             data_info = mne.create_info(
                 ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
             )
-            
+
             raw = mne.io.RawArray(
                 data_np_ds / 1e6,  # mne needs data in volts,
                 data_info,
@@ -146,7 +142,7 @@ def main():
             )
             raw.set_channel_types(ch_types.type)
             annots = mne.Annotations(
-                onset=[buffer], # seizure starts 60 seconds after the start of the clip
+                onset=[prebuffer], # seizure starts 60 seconds after the start of the clip
                 duration=[duration],
                 description=task_names[int(row.stim)],
             )
@@ -163,7 +159,7 @@ def main():
                     allow_preload=True,
                     format="EDF",
                 )
-    seizures_df.to_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
+    seizures_df.to_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
 
 if __name__ == "__main__":
     main()
