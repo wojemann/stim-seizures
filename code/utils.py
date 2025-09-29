@@ -48,7 +48,7 @@ import torch
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
-from scipy.integrate import simps
+from scipy.integrate import simpson
 import scipy.signal as sig
 import scipy as sc
 from sklearn.preprocessing import normalize
@@ -58,7 +58,6 @@ from sklearn.metrics import roc_curve,auc
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from fooof import FOOOFGroup
 import nibabel as nii
 
 warnings.filterwarnings("ignore")
@@ -1239,73 +1238,6 @@ def ll(x):
     return np.sum(np.abs(np.diff(x)), axis=-1)
 
 
-def bandpower_fooof(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2, win_stride=1) -> np.array:
-    """Use FOOOF to calculate bandpower
-
-    Args:
-        x (np.ndarray): _description_
-        fs (float): _description_
-        lo (int, optional): _description_. Defaults to 1.
-        hi (int, optional): _description_. Defaults to 120.
-        relative (bool, optional): _description_. Defaults to True.
-        win_size (int, optional): _description_. Defaults to 2.
-        win_stride (int, optional): _description_. Defaults to 1.
-
-    Returns:
-        np.array: _description_
-    """
-    # bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (12, 30), "gamma": (30, 80)}
-    bands = {"broad":(1,100)}
-
-    nperseg = int(win_size * fs)
-    noverlap = int(win_stride * fs)
-
-    freq, pxx = welch(x=x, fs=fs, nperseg=nperseg, noverlap=noverlap, axis=1)
-
-    # Initialize a FOOOF object
-    fg = FOOOFGroup()
-
-    # Set the frequency range to fit the model
-    freq_range = [lo, hi]
-
-    # Report: fit the model, print the resulting parameters, and plot the reconstruction
-    fg.fit(freq, pxx, freq_range)
-    fres = fg.get_results()
-
-    def one_over_f(f, b0, b1):
-        return b0 - np.log10(f ** b1)
-
-    idx = np.logical_and(freq >= lo, freq <= hi)
-    one_over_f_curves = np.array([one_over_f(freq[idx], *i.aperiodic_params) for i in fres])
-
-    residual = np.log10(pxx[:, idx]) - one_over_f_curves
-    freq = freq[idx]
-
-    bandpowers = np.zeros((len(bands), pxx.shape[0]))
-    for i_band, (lo, hi) in enumerate(bands.values()):
-        if np.logical_and(60 >= lo, 60 <= hi):
-            idx1 = np.logical_and(freq >= lo, freq <= 55)
-            idx2 = np.logical_and(freq >= 65, freq <= hi)
-            bp1 = simps(
-                y=residual[:, idx1],
-                x=freq[idx1],
-                dx=freq[1] - freq[0]
-            )
-            bp2 = simps(
-                y=residual[:, idx2],
-                x=freq[idx2],
-                dx=freq[1] - freq[0]
-            )
-            bandpowers[i_band] = bp1 + bp2
-        else:
-            idx = np.logical_and(freq >= lo, freq <= hi)
-            bandpowers[i_band] = simps(
-                y=residual[:, idx],
-                x=freq[idx],
-                dx=freq[1] - freq[0]
-            )
-    return bandpowers.T
-
 def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2, win_stride=1) -> np.array:
     """
     Calculates the relative bandpower of a signal x, using a butterworth filter of order 'order'
@@ -1326,10 +1258,10 @@ def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2,
     all_bands = np.zeros((pxx.shape[0], len(bands)))
     for i, (band, (lo, hi)) in enumerate(bands.items()):
         idx_band = np.logical_and(freq >= lo, freq <= hi)
-        bp = simps(pxx[:, idx_band], dx=freq[1] - freq[0])
+        bp = simpson(pxx[:, idx_band], dx=freq[1] - freq[0])
         # relative
         if relative:
-            bp /= simps(pxx, dx=freq[1] - freq[0])
+            bp /= simpson(pxx, dx=freq[1] - freq[0])
         all_bands[:, i] = bp
     return all_bands
     # return bp
@@ -1421,137 +1353,6 @@ def dice_score(x,y):
         y = np.array([str(y)])
     denom = len(x)+len(y)
     return num/denom
-
-######################## Univariate, Spectral Domain ########################
-bands = [
-    [1, 4],  # delta
-    [4, 8],  # theta
-    [8, 12],  # alpha
-    [12, 30],  # beta
-    [30, 80],  # gamma
-    [1, 80],  # broad
-]
-band_names = ["delta", "theta", "alpha", "beta", "gamma", "broad"]
-N_BANDS = len(bands)
-
-def _one_over_f(f: np.ndarray, b0: float, b1: float) -> np.ndarray:
-    """_summary_
-
-    Args:
-        f (np.ndarray): _description_
-        b0 (float): _description_
-        b1 (float): _description_
-
-    Returns:
-        np.ndarray: _description_
-    """
-    return b0 - np.log10(f**b1)
-
-
-def spectral_features(
-    data: np.ndarray, fs: float, win_size=2, win_stride=1
-) -> pd.DataFrame:
-    """_summary_
-
-    Args:
-        data (np.ndarray): _description_
-        fs (float): _description_
-
-    Returns:
-        pd.DataFrame: _description_
-    """
-    feature_names = [f"{i} power" for i in band_names] + ["b0", "b1"]
-
-    freq, pxx = welch(
-        x=data,
-        fs=fs,
-        window="hamming",
-        nperseg=int(fs * win_size),
-        noverlap=int(fs * win_stride),
-        axis=0,
-    )
-
-    # Initialize a FOOOF object
-    fg = FOOOFGroup(verbose=False)
-
-    # Set the frequency range to fit the model
-    freq_range = [0.5, 80]
-
-    # Report: fit the model, print the resulting parameters, and plot the reconstruction
-    fg.fit(freq, pxx.T, freq_range)
-    fres = fg.get_results()
-
-    idx = np.logical_and(freq >= freq_range[0], freq <= freq_range[1])
-    one_over_f_curves = np.array(
-        [_one_over_f(freq[idx], *i.aperiodic_params) for i in fres]
-    )
-
-    residual = np.log10(pxx[idx]).T - one_over_f_curves
-    freq = freq[idx]
-
-    bandpowers = np.zeros((len(bands), pxx.shape[-1]))
-    for i_band, (lo, hi) in enumerate(bands):
-        if np.logical_and(60 >= lo, 60 <= hi):
-            idx1 = np.logical_and(freq >= lo, freq <= 55)
-            idx2 = np.logical_and(freq >= 65, freq <= hi)
-            bp1 = simps(y=residual[:, idx1], x=freq[idx1], dx=freq[1] - freq[0])
-            bp2 = simps(y=residual[:, idx2], x=freq[idx2], dx=freq[1] - freq[0])
-            bandpowers[i_band] = bp1 + bp2
-        else:
-            idx = np.logical_and(freq >= lo, freq <= hi)
-            bandpowers[i_band] = simps(
-                y=residual[:, idx], x=freq[idx], dx=freq[1] - freq[0]
-            )
-    aperiodic_params = np.array([i.aperiodic_params for i in fres])
-    clip_features = np.row_stack((bandpowers, aperiodic_params.T))
-
-    return pd.DataFrame(clip_features, index=feature_names, columns=data.columns)
-
-
-def coherence_bands(
-    data: Union[pd.DataFrame, np.ndarray], fs: float, win_size=2, win_stride=1
-) -> np.ndarray:
-    """_summary_
-
-    Args:
-        data (Union[pd.DataFrame, np.ndarray]): _description_
-        fs (float): _description_
-
-    Returns:
-        np.ndarray: _description_
-    """
-    _, n_channels = data.shape
-    n_edges = sum(1 for i in itertools.combinations(range(n_channels), 2))
-    n_freq = int(fs) + 1
-
-    cohers = np.zeros((n_freq, n_edges))
-
-    for i_pair, (ch1, ch2) in enumerate(itertools.combinations(range(n_channels), 2)):
-        freq, pair_coher = coherence(
-            data.iloc[:, ch1],
-            data.iloc[:, ch2],
-            fs=fs,
-            window="hamming",
-            nperseg=int(fs * win_size),
-            noverlap=int(fs * win_stride),
-        )
-
-        cohers[:, i_pair] = pair_coher
-
-    # keep only between originally filtered range
-    filter_idx = np.logical_and(freq >= 0.5, freq <= 80)
-    freq = freq[filter_idx]
-    cohers = cohers[filter_idx]
-
-    coher_bands = np.empty((N_BANDS, n_edges))
-    coher_bands[-1] = np.mean(cohers, axis=0)
-
-    # format all frequency bands
-    for i_band, (lower, upper) in enumerate(bands[:-1]):
-        filter_idx = np.logical_and(freq >= lower, freq <= upper)
-        coher_bands[i_band] = np.mean(cohers[filter_idx], axis=0)
-
-    return coher_bands
 
 ########################### Workspace Preparation ###########################
 def set_seed(seed):

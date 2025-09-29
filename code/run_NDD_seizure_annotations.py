@@ -16,22 +16,6 @@ from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall
 # Plotting imports
 import matplotlib.pyplot as plt
 
-# Deep learning imports
-from tensorflow.config.experimental import set_memory_growth, list_physical_devices
-import tensorflow as tf
-from absl import logging as absl_logging
-
-# Suppress TensorFlow logging
-absl_logging.set_verbosity(absl_logging.ERROR)
-tf.get_logger().setLevel('ERROR')
-
-# Configure GPU memory growth to prevent allocation issues
-try:
-    for _gpu in list_physical_devices('GPU'):
-        set_memory_growth(_gpu, True)
-except Exception:
-    pass
-
 # Utility imports
 from utils import preprocess_for_detection, get_data_from_bids, index_of_union_threshold, clean_labels
 
@@ -341,14 +325,14 @@ def run_model_task(params: tuple) -> list:
                     num_stacks=1,
                     num_epochs = 10 if sequence_length == 12 else 100,
                     verbose=verbose,
-                    use_cuda=True,
+                    use_cuda=False,
                     early_stopping = False if sequence_length == 12 else early_stopping
                     )
                 else:
                     raise ValueError(f"Model {model_class} not supported")
 
                 model.fit(seizure_nart.iloc[:120*fs,:])
-                out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast}.pkl")
+                out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast}.pkl")
                 if len(np.unique(onset_mask)) == 2:
                     sz_prob = model(seizure_nart)
                     mse_prob = model.mse_df
@@ -454,14 +438,6 @@ def main():
     Models are trained patient-specifically on interictal data and applied
     to detect seizure onset patterns in ictal recordings.
     """
-    # Configure GPU memory growth for TensorFlow/PyTorch compatibility
-    gpus = list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
@@ -470,8 +446,12 @@ def main():
     # Detection parameters
     onset_time = 180          # Seizure onset time in recording (seconds)
     montage = 'bipolar'       # Electrode montage for preprocessing
-    all_models = [{'model': LiNDDA, 'sequence_length': 1}, {'model': LiNDDA, 'sequence_length': 8}, {'model': LiNDDA, 'sequence_length': 32}, {'model': GIN, 'sequence_length': 12},{'model': GIN, 'sequence_length': 32}]
-    all_forecasts = [1,8,16]  # Models to run
+    # all_models = [{'model': LiNDDA, 'sequence_length': 1}, {'model': LiNDDA, 'sequence_length': 8}, {'model': LiNDDA, 'sequence_length': 32}, {'model': GIN, 'sequence_length': 12},{'model': GIN, 'sequence_length': 32}]
+    # all_models = [{'model': LiNDDA, 'sequence_length': 1},{'model':GIN,'sequence_length':12}]
+    all_models = [{'model': LiNDDA, 'sequence_length': 1}]
+
+    # all_models = [{'model': LiNDDA, 'sequence_length': 8}]
+    all_forecasts = [1]  # Models to run
 
     # Build all tasks across all patients and seizures (models are handled inside)
     tasks = []
@@ -487,10 +467,10 @@ def main():
         tasks.append((pt, onset_run, onset_labels, montage, onset_time, all_models, all_forecasts))
 
     # Execute all tasks in parallel (each task loads seizure and runs all models)
-    # results_nested = []
-    # for task in tasks:
-    #     results_nested.append(run_model_task(task))
-    results_nested = pqdm(tasks, run_model_task, n_jobs=8)
+    results_nested = []
+    for task in tqdm(tasks[100:],total=len(tasks[100:])):
+        results_nested.append(run_model_task(task))
+    # results_nested = pqdm(tasks, run_model_task, n_jobs=8)
 
     # Filter out exceptions and flatten list of lists into a single list of dicts
     flat_results = []
@@ -504,7 +484,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results.csv"),index=False)
+    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_latter.csv"),index=False)
     
 if __name__ == "__main__":
     main()

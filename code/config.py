@@ -31,8 +31,14 @@ class Config:
     prodatapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/PROCESSED_DATA" # change to your processed data path
     metapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/METADATA" # change to your metadata path
     figpath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/FIGURES" # change to your figure path
+    if not ospe(datapath):
+        usr = "wojemann" # change to your username
+        passpath = "/Users/wojemann/Documents/CNT/woj_ieeglogin.bin" # change to your login path
+        datapath = "/Users/wojemann/local_data/dynasd_data/RAW_DATA" # change to your raw data path
+        prodatapath = "/Users/wojemann/local_data/dynasd_data/PROCESSED_DATA" # change to your processed data path
+        metapath = "/Users/wojemann/local_data/dynasd_data/METADATA" # change to your metadata path
+        figpath = "/Users/wojemann/local_data/dynasd_data/FIGURES" # change to your figure path
     
-    # Patient data
     _patients = [
         {"ptID": "HUP224", "ieeg_ids": ["HUP224_phaseII","HUP224_CCEP"], "interictal_training": ["HUP224_phaseII",5915]},
         {"ptID": "HUP225", "ieeg_ids": ["HUP225_phaseII","HUP225_CCEP"], "interictal_training": ["HUP225_phaseII",71207]},
