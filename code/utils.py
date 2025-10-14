@@ -48,7 +48,10 @@ import torch
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
-from scipy.integrate import simpson
+try:
+    from scipy.integrate import simpson as simps
+except:
+    from scipy.integrate import simps
 import scipy.signal as sig
 import scipy as sc
 from sklearn.preprocessing import normalize
@@ -1258,10 +1261,10 @@ def bandpower(x: np.ndarray, fs: float, lo=1, hi=120, relative=True, win_size=2,
     all_bands = np.zeros((pxx.shape[0], len(bands)))
     for i, (band, (lo, hi)) in enumerate(bands.items()):
         idx_band = np.logical_and(freq >= lo, freq <= hi)
-        bp = simpson(pxx[:, idx_band], dx=freq[1] - freq[0])
+        bp = simps(pxx[:, idx_band], dx=freq[1] - freq[0])
         # relative
         if relative:
-            bp /= simpson(pxx, dx=freq[1] - freq[0])
+            bp /= simps(pxx, dx=freq[1] - freq[0])
         all_bands[:, i] = bp
     return all_bands
     # return bp

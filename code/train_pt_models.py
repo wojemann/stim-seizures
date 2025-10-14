@@ -5,6 +5,8 @@ import pickle
 import time
 import pandas as pd
 import numpy as np
+import random
+import torch
 from sklearn.metrics import r2_score
 
 # Get the project root and add DynaSD to path
@@ -15,10 +17,10 @@ if dynasd_root not in sys.path:
 
 from utils import get_data_from_bids, preprocess_for_detection, remove_scalp_electrodes, clean_labels
 from config import Config
-from DynaSD import MINDD
+from DynaSD import MINDD, LiNDDA
 
 # Load config
-datapath, prodatapath = Config.deal(['datapath', 'prodatapath'])
+datapath, prodatapath, metapath = Config.deal(['datapath', 'prodatapath', 'metapath'])
 
 def train_patient_model(patient, train_kwargs, save_dir=None):
     """
@@ -33,7 +35,13 @@ def train_patient_model(patient, train_kwargs, save_dir=None):
         dict: Training results including validation R2 and model path
     """
     print(f"Training model for patient {patient}")
-    
+
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     # Set default save directory
     if save_dir is None:
         save_dir = ospj(prodatapath, "trained_models")
@@ -44,9 +52,11 @@ def train_patient_model(patient, train_kwargs, save_dir=None):
         X, fs_raw = get_data_from_bids(ospj(datapath, "BIDS"), patient, 'interictal')
         X.columns = clean_labels(X.columns, patient)
         neural_channels = remove_scalp_electrodes(X.columns)
-        
-        # Preprocess data
-        X, fs_raw, _ = preprocess_for_detection(X.loc[:, neural_channels], fs_raw)
+
+        # X = pd.DataFrame(np.random.randn(10000,100))
+
+        # # Preprocess data
+        X, fs_raw, mask = preprocess_for_detection(X.loc[:, neural_channels], fs_raw)
         print(f"Data shape for {patient}: {X.shape}")
         
         # Create MINDD model with provided parameters
@@ -54,41 +64,46 @@ def train_patient_model(patient, train_kwargs, save_dir=None):
             fs=256,
             use_cuda=True,
             verbose=train_kwargs.get('verbose', False),
-            **{k: v for k, v in train_kwargs.items() if k != 'verbose'}
+            hidden_sizes = [int(i * X.shape[1]*train_kwargs.get('sequence_length', 128)) for i in train_kwargs.get('hidden_sizes', [2, 0.3])],
+            **{k: v for k, v in train_kwargs.items() if k not in ['verbose', 'hidden_sizes']}
         )
-        
-        # Train model and measure time
-        train_start = time.perf_counter()
-        model.fit(X)
-        train_time = time.perf_counter() - train_start
-        
+        # model = LiNDDA(
+        #     fs=256,
+        #     use_cuda=False,
+        #     verbose=train_kwargs.get('verbose', False),
+        #     closeform = True,
+        #     **{k: v for k, v in train_kwargs.items() if k not in ['verbose', 'hidden_sizes']}
+        # )
         # Calculate validation R2 (sequential split)
         val_split = train_kwargs.get('val_split', 0.1)
         val_idx = int(X.shape[0] * (1 - val_split))
+
+        # Train model and measure time
+        train_start = time.perf_counter()
+        model.fit(X.iloc[:val_idx, :])
+        train_time = time.perf_counter() - train_start
         
         # Get predictions for validation set
-        x_pred = model.predict(X)
-        sequence_length = train_kwargs.get('sequence_length', 32)
+        x_pred = model.predict(X.iloc[val_idx:, :])
+        sequence_length = train_kwargs.get('sequence_length', 64)
         
         # Calculate validation R2 on the sequential validation split
-        val_data = X.iloc[val_idx:, :]
-        val_pred = x_pred[val_idx - sequence_length:, :]
+        val_data = X.iloc[val_idx + sequence_length:, :]
+        val_pred = x_pred[sequence_length:, :]
         
         # Align predictions with validation data
         min_len = min(len(val_data), len(val_pred))
         if min_len > 0:
-            val_r2 = r2_score(val_data.iloc[:min_len, :], val_pred[:min_len, :])
+            val_r2 = r2_score(val_data, val_pred)
         else:
             val_r2 = np.nan
             print(f"Warning: Could not calculate validation R2 for {patient}")
-        
+        forecast_length = train_kwargs.get('forecast_length', 1)
         # Save trained model
-        model_filename = f"{patient}_mindd_model.pkl"
-        model_path = ospj(save_dir, model_filename)
-        with open(model_path, 'wb') as f:
-            pickle.dump(model, f)
-        
-        # Prepare results
+        model_filename = f"{patient}_mindd_seq{sequence_length}_fl{forecast_length}.pkl"
+        os.makedirs(ospj(save_dir, patient), exist_ok=True)
+        model_path = ospj(save_dir, patient, model_filename)
+
         results = {
             'patient': patient,
             'val_r2': val_r2,
@@ -99,6 +114,19 @@ def train_patient_model(patient, train_kwargs, save_dir=None):
             'batch_size': getattr(model, 'batch_size', train_kwargs.get('batch_size', 'unknown')),
             **train_kwargs
         }
+        if hasattr(model.model,'cpu'):
+            model.model = model.model.cpu()
+        model.clear_sequence_cache()
+        model_dict = dict(
+            model=model,
+            fs=fs_raw,
+            mask=mask,
+            neural_channels=neural_channels,
+            results=results
+        )
+
+        with open(model_path, 'wb') as f:
+            pickle.dump(model_dict, f)  
         
         print(f"✓ {patient}: Validation R2 = {val_r2:.4f}, Training time = {train_time:.1f}s")
         return results
@@ -119,18 +147,18 @@ def main():
     train_kwargs = {
         'sequence_length': 32,
         'forecast_length': 1,
-        'hidden_sizes': [64, 32],  # List of hidden layer sizes
+        # 'hidden_sizes': [2, 0.3],  # List of hidden layer sizes
         'num_epochs': 200,
-        'batch_size': 2048,
-        'patience': 3,
-        'lr': 0.0005,
+        'batch_size': 4096,
+        'patience': 2,
+        'lr': 0.001,
         'val_split': 0.1,
         'early_stopping': True,
-        'verbose': False
+        'verbose': True
     }
     
     # Patient list
-    patients = ['HUP065', 'HUP078', 'HUP126', 'HUP221', 'HUP276']
+    patients = pd.read_csv(ospj(metapath, "metadata_v6_BIDS.csv")).Patient.unique()
     
     # Create results directory
     save_dir = ospj(prodatapath, "trained_models")
@@ -148,13 +176,8 @@ def main():
     
     # Save all results
     results_df = pd.DataFrame(all_results)
-    results_path = ospj(save_dir, "training_results.csv")
+    results_path = ospj(save_dir, "training_results_mindd_seq32.csv")
     results_df.to_csv(results_path, index=False)
-    
-    # Save results as pickle too
-    pickle_path = ospj(save_dir, "training_results.pkl")
-    with open(pickle_path, 'wb') as f:
-        pickle.dump(all_results, f)
     
     print("-" * 60)
     print("Training completed!")

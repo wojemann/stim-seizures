@@ -45,7 +45,7 @@ dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
 if dynasd_root not in sys.path:
     sys.path.insert(0, dynasd_root)
 
-from DynaSD import ABSSLP, IMPRINT, WVNT, HFER, LiNDDA, GIN
+from DynaSD import ABSSLP, IMPRINT, WVNT, HFER
 from config import Config
 
 # Get paths from config 
@@ -148,11 +148,12 @@ def run_model_task(params: tuple) -> list:
     (
         patient,
         onset_run,
+        split,
+        stim,
         onset_labels,
         montage,
         onset_time_sec,
         model_classes,
-        all_forecasts,
     ) = params
 
     # Check if all models already have probability files saved (without loading EEG)
@@ -160,99 +161,101 @@ def run_model_task(params: tuple) -> list:
     model_paths = {}
     #TODO add forecast to the output path
     for model_class in model_classes:
-        for forecast in all_forecasts:
-            # Get model name
-            model_name = getattr(model_class, '__name__','UNKNOWN')
-            
-            # Create output directory and path using onset_run as task name
-            out_dir = ospj(prodatapath, 'sz_prob', patient)
-            out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_name}_sz_prob.pkl")
-            model_paths[model_class] = out_path
-            
-            if not glob.glob(out_path) or OVERWRITE:
-                # print(f"All models do not exist for {patient} {onset_run} {model_class}")
-                all_models_exist = False
-                break
+        # Get model name
+        model_name = getattr(model_class, '__name__','UNKNOWN')
+        
+        # Create output directory and path using onset_run as task name
+        out_dir = ospj(prodatapath, 'sz_prob', patient)
+        out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_name}_sz_prob.pkl")
+        model_paths[model_class] = out_path
+        
+        if not glob.glob(out_path) or OVERWRITE:
+            # print(f"All models do not exist for {patient} {onset_run} {model_class}")
+            all_models_exist = False
+            break
     
     # If all models exist and we're not overwriting, process existing files without loading EEG
     if all_models_exist:
         # print(f"All models exist for {patient} {onset_run}")
         results: list[dict] = []
         for model_class in model_classes:
-            for forecast in all_forecasts:
-                model_name = getattr(model_class, '__name__','UNKNOWN')
+            model_name = getattr(model_class, '__name__','UNKNOWN')
                 
-                out_path = glob.glob(model_paths[model_class])[0]
-                sz_prob = pd.read_pickle(out_path)
-                sz_prob_times = sz_prob.pop('time')
-                onset_mask = [ch.split('-')[0] in onset_labels for ch in sz_prob.columns]
-                
-                if len(np.unique(onset_mask)) == 2:
-                    onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
-                    onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
-                    onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
-                    
-                    # IoU-optimized threshold metrics
-                    iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
-                    # Calculate additional IoU metrics (precision, recall)
-                    iou_pred = onset_prob > iou_threshold
-                    iou_precision = precision_score(onset_mask, iou_pred)
-                    iou_recall = recall_score(onset_mask, iou_pred)
-                    
-                    # F1-optimized threshold metrics
-                    f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
-                    f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
-
-                    results.append(
-                        dict(
-                            patient=patient,
-                            onset=int(onset_run),
-                            model=model_name,
-                            auc=auc,
-                            # IoU-optimized metrics
-                            iou_threshold=iou_threshold,
-                            iou_f1=iou_f1,
-                            iou_phi=iou_phi,
-                            iou_sensitivity=iou_sensitivity,
-                            iou_specificity=iou_specificity,
-                            iou_precision=iou_precision,
-                            iou_recall=iou_recall,
-                            # F1-optimized metrics
-                            f1_threshold=f1_threshold,
-                            f1_f1=f1_metrics['f1'],
-                            f1_phi=f1_metrics['phi'],
-                            f1_sensitivity=f1_metrics['sensitivity'],
-                            f1_specificity=f1_metrics['specificity'],
-                            f1_precision=f1_metrics['precision'],
-                            f1_recall=f1_metrics['recall'],
-                        )
-                    )
-                else:
-                    results.append(
-                        dict(
-                            patient=patient,    
-                            onset=int(onset_run),
-                            model=model_name,
-                            auc=np.nan,
-                            # IoU-optimized metrics
-                            iou_threshold=np.nan,
-                            iou_f1=np.nan,
-                            iou_phi=np.nan,
-                            iou_sensitivity=np.nan,
-                            iou_specificity=np.nan,
-                            iou_precision=np.nan,
-                            iou_recall=np.nan,
-                            # F1-optimized metrics
-                            f1_threshold=np.nan,
-                            f1_f1=np.nan,
-                            f1_phi=np.nan,
-                            f1_sensitivity=np.nan,
-                            f1_specificity=np.nan,
-                            f1_precision=np.nan,
-                            f1_recall=np.nan,
-                        )
-                    )
+            out_path = glob.glob(model_paths[model_class])[0]
+            sz_prob = pd.read_pickle(out_path)
+            sz_prob_times = sz_prob.pop('time')
+            onset_mask = [ch.split('-')[0] in onset_labels for ch in sz_prob.columns]
             
+            if len(np.unique(onset_mask)) == 2:
+                onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
+                onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
+                onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
+                
+                # IoU-optimized threshold metrics
+                iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
+                # Calculate additional IoU metrics (precision, recall)
+                iou_pred = onset_prob > iou_threshold
+                iou_precision = precision_score(onset_mask, iou_pred)
+                iou_recall = recall_score(onset_mask, iou_pred)
+                
+                # F1-optimized threshold metrics
+                f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
+                f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+
+                results.append(
+                    dict(
+                        patient=patient,
+                        onset=int(onset_run),
+                        split=split,
+                        stim=stim,
+                        model=model_name,
+                        auc=auc,
+                        # IoU-optimized metrics
+                        iou_threshold=iou_threshold,
+                        iou_f1=iou_f1,
+                        iou_phi=iou_phi,
+                        iou_sensitivity=iou_sensitivity,
+                        iou_specificity=iou_specificity,
+                        iou_precision=iou_precision,
+                        iou_recall=iou_recall,
+                        # F1-optimized metrics
+                        f1_threshold=f1_threshold,
+                        f1_f1=f1_metrics['f1'],
+                        f1_phi=f1_metrics['phi'],
+                        f1_sensitivity=f1_metrics['sensitivity'],
+                        f1_specificity=f1_metrics['specificity'],
+                        f1_precision=f1_metrics['precision'],
+                        f1_recall=f1_metrics['recall'],
+                    )
+                )
+            else:
+                results.append(
+                    dict(
+                        patient=patient,    
+                        onset=int(onset_run),
+                        split=split,
+                        stim=stim,
+                        model=model_name,
+                        auc=np.nan,
+                        # IoU-optimized metrics
+                        iou_threshold=np.nan,
+                        iou_f1=np.nan,
+                        iou_phi=np.nan,
+                        iou_sensitivity=np.nan,
+                        iou_specificity=np.nan,
+                        iou_precision=np.nan,
+                        iou_recall=np.nan,
+                        # F1-optimized metrics
+                        f1_threshold=np.nan,
+                        f1_f1=np.nan,
+                        f1_phi=np.nan,
+                        f1_sensitivity=np.nan,
+                        f1_specificity=np.nan,
+                        f1_precision=np.nan,
+                        f1_recall=np.nan,
+                    )
+                )
+        
         return results
 
     # Load seizure recording (only if not all models exist)
@@ -283,21 +286,18 @@ def run_model_task(params: tuple) -> list:
         out_dir = ospj(prodatapath, 'sz_prob', patient)
         os.makedirs(out_dir, exist_ok=True)
 
-        # # Check if output file already exists
-        
-        for forecast in all_forecasts:
-            all_paths_exist = True
-            out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_name}_sz_prob_forecast-{forecast}.pkl")
-            if os.path.exists(out_path) and not OVERWRITE:  
-                sz_prob = pd.read_pickle(out_path)
-                sz_prob_times = sz_prob.pop('time')
-                onset_mask = [ch.split('-')[0] in onset_labels for ch in sz_prob.columns]
-            else:
-                all_paths_exist = False
-                break
-        if 
+        # Check if output file already exists
+        all_paths_exist = True
+        out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_name}_sz_prob.pkl")
+        if glob.glob(out_path) and not OVERWRITE:  
+            sz_prob = pd.read_pickle(out_path)
+            sz_prob_times = sz_prob.pop('time')
+            onset_mask = [ch.split('-')[0] in onset_labels for ch in sz_prob.columns]
         else:
-        # Preprocess seizure
+            all_paths_exist = False
+        if not all_paths_exist:
+            # print(f"All paths do not exist for {patient} {onset_run} {model_name}")
+            # Preprocess seizure
             wavecheck = model_class == WVNT
             seizure_pre, fs = preprocess_for_detection(
                 seizure,
@@ -314,103 +314,92 @@ def run_model_task(params: tuple) -> list:
             onset_mask = [ch.split('-')[0] in onset_labels for ch in seizure_nart.columns]
 
             if wavecheck:
-                model = model_class(fs=fs, w_size=1, w_stride = 0.125, 
+                model = model_class(fs=fs, w_size=1, w_stride = 0.5, 
                 model_path = '/mnt/sauce/littlab/users/wojemann/dynasd_data/CHECKPOINTS/WaveNet/v111.hdf5',
                 verbose = False,
                 batch_size = 512)
-            elif model_class == LiNDDA:
-                model = model_class(
-                    sequence_length = 32,
-                    forecast_length = 1,
-                    patience = 2,
-                    lr = 0.001,
-                    val_split = 0.1,
-                    fs = 256,
-                    early_stopping = True,
-                    num_epochs = 500,
-                    batch_size = 2048,
-                    verbose = False,
-                    use_cuda = True,
-                )
             else:
-                model = model_class(fs=fs, w_size=1, w_stride=0.125)
+                model = model_class(fs=fs, w_size=1, w_stride=0.5)
 
             model.fit(seizure_nart.iloc[: fs * 120])
 
+            sz_prob = model(seizure_nart)
+            sz_prob_times = model.get_win_times(len(seizure_nart))
+            sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
+            out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-{run}_mdl-{model_name}_sz_prob.pkl")
+            sz_prob_df.to_pickle(out_path)
+
+        if len(np.unique(onset_mask)) == 2:
+            onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
+            onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
+            onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
             
-            for forecast in all_forecasts:
-                model.forecast_length = forecast
-                sz_prob = model(seizure_nart)
-                sz_prob_times = model.get_win_times(len(seizure_nart))
-                sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
-                sz_prob_df.to_pickle(out_path)
-                if len(np.unique(onset_mask)) == 2:
-                    onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
-                    onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
-                    onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
-                    
-                    # IoU-optimized threshold metrics
-                    iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
-                    # Calculate additional IoU metrics (precision, recall)
-                    iou_pred = onset_prob > iou_threshold
-                    iou_precision = precision_score(onset_mask, iou_pred)
-                    iou_recall = recall_score(onset_mask, iou_pred)
-                    
-                    # F1-optimized threshold metrics
-                    f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
-                    f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+            # IoU-optimized threshold metrics
+            iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
+            # Calculate additional IoU metrics (precision, recall)
+            iou_pred = onset_prob > iou_threshold
+            iou_precision = precision_score(onset_mask, iou_pred)
+            iou_recall = recall_score(onset_mask, iou_pred)
+            
+            # F1-optimized threshold metrics
+            f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
+            f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
 
-                    results.append(
-                        dict(
-                            patient=patient,
-                            onset=int(onset_run),
-                            model=model_name,
-                            auc=auc,
-                            # IoU-optimized metrics
-                            iou_threshold=iou_threshold,
-                            iou_f1=iou_f1,
-                            iou_phi=iou_phi,
-                            iou_sensitivity=iou_sensitivity,
-                            iou_specificity=iou_specificity,
-                            iou_precision=iou_precision,
-                            iou_recall=iou_recall,
-                            # F1-optimized metrics
-                            f1_threshold=f1_threshold,
-                            f1_f1=f1_metrics['f1'],
-                            f1_phi=f1_metrics['phi'],
-                            f1_sensitivity=f1_metrics['sensitivity'],
-                            f1_specificity=f1_metrics['specificity'],
-                            f1_precision=f1_metrics['precision'],
-                            f1_recall=f1_metrics['recall'],
-                        )
-                    )
-                else:
-                    results.append(
-                        dict(
-                            patient=patient,
-                            onset=int(onset_run),
-                            model=model_name,
-                            auc=np.nan,
-                            # IoU-optimized metrics
-                            iou_threshold=np.nan,
-                            iou_f1=np.nan,
-                            iou_phi=np.nan,
-                            iou_sensitivity=np.nan,
-                            iou_specificity=np.nan,
-                            iou_precision=np.nan,
-                            iou_recall=np.nan,
-                            # F1-optimized metrics
-                            f1_threshold=np.nan,
-                            f1_f1=np.nan,
-                            f1_phi=np.nan,
-                            f1_sensitivity=np.nan,
-                            f1_specificity=np.nan,
-                            f1_precision=np.nan,
-                            f1_recall=np.nan,
-                        )
-                    )
+            results.append(
+                dict(
+                    patient=patient,
+                    onset=int(onset_run),
+                    split=split,
+                    stim=stim,
+                    model=model_name,
+                    auc=auc,
+                    # IoU-optimized metrics
+                    iou_threshold=iou_threshold,
+                    iou_f1=iou_f1,
+                    iou_phi=iou_phi,
+                    iou_sensitivity=iou_sensitivity,
+                    iou_specificity=iou_specificity,
+                    iou_precision=iou_precision,
+                    iou_recall=iou_recall,
+                    # F1-optimized metrics
+                    f1_threshold=f1_threshold,
+                    f1_f1=f1_metrics['f1'],
+                    f1_phi=f1_metrics['phi'],
+                    f1_sensitivity=f1_metrics['sensitivity'],
+                    f1_specificity=f1_metrics['specificity'],
+                    f1_precision=f1_metrics['precision'],
+                    f1_recall=f1_metrics['recall'],
+                )
+            )
+        else:
+            results.append(
+                dict(
+                    patient=patient,
+                    onset=int(onset_run),
+                    split=split,
+                    stim=stim,
+                    model=model_name,
+                    auc=np.nan,
+                    # IoU-optimized metrics
+                    iou_threshold=np.nan,
+                    iou_f1=np.nan,
+                    iou_phi=np.nan,
+                    iou_sensitivity=np.nan,
+                    iou_specificity=np.nan,
+                    iou_precision=np.nan,
+                    iou_recall=np.nan,
+                    # F1-optimized metrics
+                    f1_threshold=np.nan,
+                    f1_f1=np.nan,
+                    f1_phi=np.nan,
+                    f1_sensitivity=np.nan,
+                    f1_specificity=np.nan,
+                    f1_precision=np.nan,
+                    f1_recall=np.nan,
+                )
+            )
 
-            return results
+    return results
 
 
 def main():
@@ -443,6 +432,7 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
+    seizures_df['stim'] = seizures_df['stim'].fillna(0)
     seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -458,17 +448,24 @@ def main():
     for _,row in pbar:
         pt = row.Patient
         sz = row.onset
+        split = row.split
+        stim = row.stim
         pbar.set_description(desc=f"Patient: {pt} | Seizure: {sz}",refresh=True)
         onset_run = str(int(row.onset))
-        onset_labels = clean_labels([l.strip() for l in row.SOZ.split(',')], pt)
-        tasks.append((pt, onset_run, onset_labels, montage, onset_time, all_models))
+        if not isinstance(row.SOZ, str):
+            onset_labels = []
+        else:
+            onset_labels = clean_labels([l.strip() for l in row.SOZ.split(',')], pt)
+        tasks.append((pt, onset_run, split, stim,onset_labels, montage, onset_time, all_models))
 
     # Execute all tasks in parallel (each task loads seizure and runs all models)
     # y = []
     # for task in tasks[-5:]:
     #     y.append(run_model_task(task))
     results_nested = pqdm(tasks, run_model_task, n_jobs=12)
-
+    # results_nested = []
+    # for task in tasks:
+    #     results_nested.append(run_model_task(task))
     # Filter out exceptions and flatten list of lists into a single list of dicts
     flat_results = []
     for result in results_nested:

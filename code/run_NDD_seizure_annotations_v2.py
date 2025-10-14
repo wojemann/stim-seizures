@@ -132,6 +132,7 @@ def run_model_task(params: tuple) -> list:
     (
         patient,
         onset_run,
+        split,
         onset_labels,
         montage,
         onset_time_sec,
@@ -153,9 +154,9 @@ def run_model_task(params: tuple) -> list:
             base_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}.pkl")
             
             model_paths[f"{model_name}_{sequence_length}_{forecast_length}"] = {
-                'sz_prob': base_path,
                 'mse_prob': base_path.replace('sz_prob_', 'mse_prob_'),
-                'mse_z_prob': base_path.replace('sz_prob_', 'mse_z_prob_')
+                'mse_z_prob': base_path.replace('sz_prob_', 'mse_z_prob_'),
+                'mse_zs_prob': base_path.replace('sz_prob_', 'mse_zs_prob_')
             }
             
             # Check if any file is missing
@@ -179,7 +180,7 @@ def run_model_task(params: tuple) -> list:
                 
                 paths = model_paths[f"{model_name}_{sequence_length}_{forecast_length}"]
                 
-                for metric, file_path in [('prob', paths['sz_prob']), ('mse', paths['mse_prob']), ('mse_z', paths['mse_z_prob'])]:
+                for metric, file_path in zip(['mse', 'mse_z', 'mse_zs'], [paths['mse_prob'], paths['mse_z_prob'], paths['mse_zs_prob']]):
                     df = pd.read_pickle(file_path)
                     sz_prob_times = df.pop('time')
                     onset_mask = [ch.split('-')[0] in onset_labels for ch in df.columns]
@@ -203,6 +204,7 @@ def run_model_task(params: tuple) -> list:
                             dict(
                                 patient=patient,
                                 onset=int(onset_run),
+                                split=split,
                                 model=model_name+'_'+metric,
                                 sequence=sequence_length,
                                 forecast=forecast_length,
@@ -230,6 +232,7 @@ def run_model_task(params: tuple) -> list:
                             dict(
                                 patient=patient,
                                 onset=int(onset_run),
+                                split=split,
                                 model=model_name+'_'+metric,
                                 sequence=sequence_length,
                                 forecast=forecast_length,
@@ -308,7 +311,6 @@ def run_model_task(params: tuple) -> list:
             patience = 1
             verbose = False
 
-
             if model_class == LiNDDA:
                 model = model_class(
                     fs = fs,
@@ -345,22 +347,26 @@ def run_model_task(params: tuple) -> list:
             model.fit(seizure_nart.iloc[:120*fs,:])
             out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}.pkl")
             
-            sz_prob = model(seizure_nart)
+            mse_zs_prob = model(seizure_nart)
             mse_prob = model.mse_df
             mse_z_prob = model.mse_z_df.abs()
             sz_prob_times = model.get_win_times(len(seizure_nart))
-            sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
+            # sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
             mse_prob_df = pd.concat((mse_prob,pd.Series(sz_prob_times,name='time')),axis=1)
             mse_z_prob_df = pd.concat((mse_z_prob,pd.Series(sz_prob_times,name='time')),axis=1)
-            sz_prob_df.to_pickle(out_path)
+            mse_zs_prob_df = pd.concat((mse_zs_prob,pd.Series(sz_prob_times,name='time')),axis=1)
+            # sz_prob_df.to_pickle(out_path)
             mse_prob_df.to_pickle(out_path.replace('sz_prob_','mse_prob_'))
             mse_z_prob_df.to_pickle(out_path.replace('sz_prob_','mse_z_prob_'))
+            mse_zs_prob_df.to_pickle(out_path.replace('sz_prob_','mse_zs_prob_'))
+
             onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
             onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
-            onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
+            # onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
             onset_mse = mse_prob.iloc[onset_idx:onset_odx,:].mean()
             onset_mse_z = mse_z_prob.iloc[onset_idx:onset_odx,:].mean()
-            for df,metric in zip([onset_prob,onset_mse,onset_mse_z],['prob','mse','mse_z']):
+            onset_mse_zs = mse_zs_prob.iloc[onset_idx:onset_odx,:].mean()
+            for df,metric in zip([onset_mse,onset_mse_z,onset_mse_zs],['mse','mse_z','mse_zs']):
                 if len(np.unique(onset_mask)) == 2:
                     # IoU-optimized threshold metrics
                     iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, df)
@@ -377,6 +383,7 @@ def run_model_task(params: tuple) -> list:
                         dict(
                             patient=patient,
                             onset=int(onset_run),
+                            split=split,
                             model=model_name+'_'+metric,
                             sequence = sequence_length,
                             forecast=forecast_length,
@@ -404,6 +411,7 @@ def run_model_task(params: tuple) -> list:
                         dict(
                             patient=patient,
                             onset=int(onset_run),
+                            split=split,
                             model=model_name+'_'+metric,
                             sequence = sequence_length,
                             forecast=forecast_length,
@@ -453,7 +461,8 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
-    seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
+    seizures_df = seizures_df[seizures]
+    # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
     onset_time = 180          # Seizure onset time in recording (seconds)
@@ -461,22 +470,16 @@ def main():
     # all_models = [{'model': LiNDDA, 'sequence_length': 1},{'model':GIN,'sequence_length':12}]
     # all_models = [{'model': LiNDDA, 'sequence_length': 1}]
     # all_models = [{'model': LiNDDA, 'sequence_length': 32}]
-    # all_models = [
-    #     {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
-    #     {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 16}, 
-    #     {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 1}, 
-    #     {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
-    #     {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 16},
-    #     {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
-    #     {'model': GIN, 'sequence_length': 32, 'forecast_length': 1},
-    #     {'model': GIN, 'sequence_length': 32, 'forecast_length': 16},
-    #     {'model': GIN, 'sequence_length': 12, 'forecast_length': 16},
-    # ]
     all_models = [
         {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
         {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
     ]
+    # all_models = [
+    #     {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
+    #     {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 1},
+    #     {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 1},
+    # ]
 
 
     # Build all tasks across all patients and seizures (models are handled inside)
@@ -487,10 +490,14 @@ def main():
     for _,row in pbar:
         pt = row.Patient
         sz = row.onset
+        split = row.split
         pbar.set_description(desc=f"Patient: {pt} | Seizure: {sz}",refresh=True)
         onset_run = str(int(row.onset))
-        onset_labels = clean_labels([l.strip() for l in row.SOZ.split(',')], pt)
-        tasks.append((pt, onset_run, onset_labels, montage, onset_time, all_models))
+        if not isinstance(row.SOZ, str):
+            onset_labels = []
+        else:
+            onset_labels = clean_labels([l.strip() for l in row.SOZ.split(',')], pt)
+        tasks.append((pt, onset_run, split, onset_labels, montage, onset_time, all_models))
 
     # Execute all tasks in parallel (each task loads seizure and runs all models)
     results_nested = []

@@ -21,7 +21,7 @@ usr,passpath,datapath,prodatapath,figpath,metapath,patient_table,rid_hup,pt_list
 np.random.seed(171999)
 
 TARGET = 256
-OVERWRITE = True
+OVERWRITE = False
 
 def main():
     # Setting up BIDS targets
@@ -40,7 +40,8 @@ def main():
     }
 
     # Loading in all seizure data
-    seizures_df = pd.read_csv(ospj(metapath,"validation_metadata","metadata_v6.csv"))
+    # seizures_df = pd.read_csv(ospj(metapath,"validation_metadata","metadata_v6.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"metadata_v7.csv"))
 
     # drop HF stim induced seizures
     prebuffer = 180 # seconds before and after seizure to save
@@ -159,7 +160,7 @@ def main():
                     allow_preload=True,
                     format="EDF",
                 )
-    seizures_df.to_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
+    seizures_df.to_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
 
 if __name__ == "__main__":
     main()

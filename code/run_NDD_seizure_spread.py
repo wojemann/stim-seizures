@@ -3,6 +3,7 @@ import sys
 import os
 import glob
 from os.path import join as ospj
+import pickle
 
 # Scientific imports
 import numpy as np
@@ -10,10 +11,10 @@ import pandas as pd
 from tqdm import tqdm
 
 # Utility imports
-from utils import get_data_from_bids, clean_labels
+from utils import clean_labels
 
 # Sklearn imports
-from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
+from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score, roc_auc_score
 
 # Get the project root (parent directory of examples/)
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,47 +23,53 @@ dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
 if dynasd_root not in sys.path:
     sys.path.insert(0, dynasd_root)
 
-from DynaSD import LiNDDA, GIN
+from DynaSD import LiNDDA, GIN, MINDD
 
 from config import Config
 
 # Get paths from config 
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 
+FILE_KEY = 'iou'
 
-def load_probability_files(patient, onset_run, model_dicts, all_forecasts):
+
+def load_probability_files(patient, onset_run, model_dicts):
     """Load probability files for all model-sequence-forecast combinations for a given patient/seizure"""
     prob_files = {}
     
     for model_dict in model_dicts:
         model_class = model_dict['model']
+        model_name = model_dict['model_name']
         sequence_length = model_dict['sequence_length']
-        model_name = getattr(model_class, '__name__', 'UNKNOWN')
+        forecast_length = model_dict['forecast_length']
+        # model_name = getattr(model_class, '__name__', 'UNKNOWN')
         
-        for forecast in all_forecasts:
-            for metric in ['prob', 'mse', 'mse_z']:
-                # Create the key for this combination
-                key = f"{model_name}_{metric}_{sequence_length}_{forecast}"
+        for metric in ['mse', 'mse_z', 'mse_zs']:
+            # Create the key for this combination
+            key = f"{model_name}_{metric}_sl{sequence_length}_fl{forecast_length}"
                 
-                # Find probability files
-                prob_dir = ospj(prodatapath, 'sz_prob', patient)
-                if metric == 'prob':
-                    pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast}.pkl"
-                else:
-                    pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_{metric}_prob_forecast-{forecast}.pkl"
-                
-                prob_path = glob.glob(ospj(prob_dir, pattern))
-                
-                if prob_path:
-                    prob_files[key] = {
-                        'data': pd.read_pickle(prob_path[0]),
-                        'model_class': model_class,
-                        'sequence_length': sequence_length,
-                        'forecast': forecast,
-                        'metric': metric
-                    }
-                else:
-                    print(f"Warning: No probability file found for {patient} {onset_run} {key}")
+            # Find probability files
+            prob_dir = ospj(prodatapath, 'sz_prob', patient)
+            # if metric == 'prob':
+            #     pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast}.pkl"
+            # else:
+            #     pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_{metric}_prob_forecast-{forecast}.pkl"
+            pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}"
+            if metric == 'prob':
+                pattern += f"_sz_prob_forecast-{forecast_length}.pkl"
+            else:
+                pattern += f"_{metric}_prob_forecast-{forecast_length}.pkl"
+            prob_path = glob.glob(ospj(prob_dir, pattern))
+            if prob_path:
+                prob_files[key] = {
+                    'data': pd.read_pickle(prob_path[0]),
+                    'model_class': model_class,
+                    'sequence_length': sequence_length,
+                    'forecast_length': forecast_length,
+                    'metric': metric
+                }
+            else:
+                print(f"Warning: No probability file found for {patient} {onset_run} {key}")
     
     return prob_files
 
@@ -79,18 +86,32 @@ def main():
     seizures_df = seizures_df[seizures_df.split == 1]
     
     # Load model thresholds - expecting format: model_metric_sequence_forecast
-    thresholds_df = pd.read_csv(ospj(prodatapath, "ndd_val_thresholds_f1.csv"))  # Update path as needed
-    threshold_dict = dict(zip(thresholds_df.model, thresholds_df.f1_threshold))
+    thresholds_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{FILE_KEY}_v2.csv"))  # Update path as needed
+    threshold_dict = dict(zip(thresholds_df.model, thresholds_df[FILE_KEY+'_threshold']))
     
     # Model configurations matching annotation script
+    # all_models = [
+    #     {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1},
+    #     {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 16}, 
+    #     {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 8, 'forecast_length': 1}, 
+    #     {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 32, 'forecast_length': 1},
+    #     {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 32, 'forecast_length': 16},
+    #     {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 1},
+    #     {'model': GIN, 'model_name': 'GIN', 'sequence_length': 32, 'forecast_length': 1},
+    #     {'model': GIN, 'model_name': 'GIN', 'sequence_length': 32, 'forecast_length': 16},
+    #     {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 16},
+    #     {'model': MINDD, 'model_name': 'MINDD_pt', 'sequence_length': 64, 'forecast_length': 1},
+    #     {'model': MINDD, 'model_name': 'MINDD_pt', 'sequence_length': 32, 'forecast_length': 1},
+    #     {'model': LiNDDA, 'model_name': 'LiNDDA_pt', 'sequence_length': 64, 'forecast_length': 1},
+    # ]
     all_models = [
-        {'model': LiNDDA, 'sequence_length': 1},
-        {'model': LiNDDA, 'sequence_length': 8}, 
-        {'model': LiNDDA, 'sequence_length': 32},
-        {'model': GIN, 'sequence_length': 12},
-        {'model': GIN, 'sequence_length': 32}
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 2, 'forecast_length': 1},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 4, 'forecast_length': 1},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 8, 'forecast_length': 1},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 32, 'forecast_length': 1},
+        {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 1},
     ]
-    all_forecasts = [1,16]  # Forecast lengths to process
     
     # Results storage
     spread_results = []
@@ -105,7 +126,7 @@ def main():
         pbar.set_description(f"Patient: {patient} | Seizure: {onset_run}")
         
         # Load probability files for this seizure
-        prob_files = load_probability_files(patient, onset_run, all_models, all_forecasts)
+        prob_files = load_probability_files(patient, onset_run, all_models)
         
         # Process each model-metric-sequence-forecast combination that has probability data
         for key, prob_info in prob_files.items():
@@ -114,7 +135,7 @@ def main():
                 prob_data = prob_info['data']
                 model_class = prob_info['model_class']
                 sequence_length = prob_info['sequence_length']
-                forecast = prob_info['forecast']
+                forecast_length = prob_info['forecast_length']
                 metric = prob_info['metric']
 
                 # Extract time array
@@ -131,7 +152,7 @@ def main():
                         w_size=1,
                         w_stride=0.5,
                         sequence_length=sequence_length,
-                        forecast_length=forecast,
+                        forecast_length=forecast_length,
                         closeform=True,
                         batch_size=2048,
                         verbose=False,
@@ -142,7 +163,7 @@ def main():
                         w_size=1,
                         w_stride=0.5,
                         sequence_length=sequence_length,
-                        forecast_length=forecast,
+                        forecast_length=forecast_length,
                         batch_size=2048,
                         val_split=0.1,
                         patience=1,
@@ -155,20 +176,26 @@ def main():
                         use_cuda=False,
                         early_stopping=False if sequence_length == 12 else True
                     )
+                elif model_class == MINDD:
+                    model = model_class(
+                        fs=256,
+                        w_size=1,
+                        w_stride=0.5,
+                        sequence_length=sequence_length,
+                        forecast_length=forecast_length,
+                    )
                 else:
                     print(f"Warning: Unsupported model class {model_class}")
                     continue
                 
                 # Call spread analysis function
-                first_onset_idx = int(np.argmin(np.abs(prob_times - 120)))
-                spread_df, sz_clf = model.get_onset_and_spread(prob_data.iloc[first_onset_idx:,:], threshold=threshold, ret_smooth_mat=True)
-
-                if spread_df is not None and not spread_df.empty:
+                
+                def get_results_dict(prob_df,spread_df,sz_clf, prob_times, onset_labels, onset_run, model_class, metric, sequence_length, forecast_length, is_tau = False):
                     onset_idx = int(np.argmin(np.abs(prob_times))) + spread_df.iloc[0].values[0]
                     onset_odx = int(np.argmin(np.abs(prob_times - 1))) + spread_df.iloc[0].values[0]
                     
                     # Calculate onset metrics
-                    onset_mask = np.array([ch.split('-')[0] in onset_labels for ch in prob_data.columns])
+                    onset_mask = np.array([ch.split('-')[0] in onset_labels for ch in prob_df.columns])
                     onset_pred = sz_clf.iloc[onset_idx:onset_odx,:].sum()>0
                     sensitivity = np.sum(onset_mask & onset_pred) / np.sum(onset_mask)
                     specificity = np.sum(~onset_mask & ~onset_pred) / np.sum(~onset_mask)
@@ -176,7 +203,7 @@ def main():
                     recall = recall_score(onset_mask, onset_pred, zero_division=0)
                     f1 = f1_score(onset_mask, onset_pred)
                     phi = matthews_corrcoef(onset_mask, onset_pred)
-
+                    auc = roc_auc_score(onset_mask, onset_pred) if sum(onset_mask) > 0 else np.nan
                     # Calculate recruitment times from indices
                     recruitment_indices = spread_df.iloc[0].values  # First row contains indices
                     recruitment_times = prob_times[recruitment_indices.astype(int)]
@@ -187,7 +214,7 @@ def main():
                     
                     # Filter for SOZ channels only
                     soz_channels = [ch for ch in spread_df.columns if ch.split('-')[0] in onset_labels]
-                    
+                    model_name = getattr(model_class, '__name__', 'UNKNOWN')
                     if len(soz_channels) > 0:
                         # Calculate spread ranks
                         # Sort all channels by recruitment time to get ranks
@@ -212,16 +239,20 @@ def main():
                         avg_recruitment_latency = np.mean(soz_times)
                         median_recruitment_latency = np.median(soz_times)
                         max_recruitment_latency = np.max(soz_times)
+
+                        # Calculate raw NDD values
+                        soz = prob_df.iloc[onset_idx:onset_odx,onset_mask].mean().mean()
+                        nsoz = prob_df.iloc[onset_idx:onset_odx,~onset_mask].mean().mean()
                         
                         # Store results
-                        result_dict = {
+                        return {
                             'patient': patient,
                             'onset': int(onset_run),
                             'model': key,  # Full model_metric_sequence_forecast identifier
-                            'model_name': getattr(model_class, '__name__', 'UNKNOWN'),
+                            'model_name': model_name if not is_tau else model_name + '_tau',
                             'metric': metric,
                             'sequence_length': sequence_length,
-                            'forecast_length': forecast,
+                            'forecast_length': forecast_length,
                             'num_soz_channels': len(soz_channels),
                             'total_channels': total_channels,
                             'avg_soz_spread_rank_pct': avg_soz_rank_pct,
@@ -237,20 +268,23 @@ def main():
                             'recall': recall,
                             'f1': f1,
                             'phi': phi,
+                            'soz': soz,
+                            'nsoz': nsoz,
+                            'auc': auc,
                         }
                     
                     else:
                         print(f"Warning: No SOZ channels found in spread data for {patient} {onset_run} {key}")
                         # Create minimal result dict for cases without SOZ channels in spread data
                         total_channels = len(channel_times) if channel_times else 0
-                        result_dict = {
+                        return {
                             'patient': patient,
                             'onset': int(onset_run),
                             'model': key,
-                            'model_name': getattr(model_class, '__name__', 'UNKNOWN'),
+                            'model_name': model_name if not is_tau else model_name + '_tau',
                             'metric': metric,
                             'sequence_length': sequence_length,
-                            'forecast_length': forecast,
+                            'forecast_length': forecast_length,
                             'num_soz_channels': 0,
                             'total_channels': total_channels,
                             'avg_soz_spread_rank_pct': np.nan,
@@ -266,16 +300,34 @@ def main():
                             'recall': np.nan,
                             'f1': np.nan,
                             'phi': np.nan,
+                            'soz': np.nan,
+                            'nsoz': np.nan,
+                            'auc': np.nan,
                         }
-                    
-                    spread_results.append(result_dict)
+                
+                first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
+                if 'z' in key:
+                    spread_df, sz_clf = model.get_onset_and_spread(prob_data.iloc[first_onset_idx:,:], threshold=threshold, ret_smooth_mat=True)
+                    if spread_df is not None and not spread_df.empty:
+                        result_dict = get_results_dict(prob_data,spread_df,sz_clf, prob_times, onset_labels, onset_run, model_class, metric, sequence_length, forecast_length, is_tau = is_tau==1)
+                        result_dict['threshold'] = thresh
+                        spread_results.append(result_dict)
+                else:
+                    for is_tau,thresh in enumerate([threshold, model.get_threshold(prob_data.iloc[first_onset_idx:,:], 'medianover')]):
+                        spread_df, sz_clf = model.get_onset_and_spread(prob_data.iloc[first_onset_idx:,:], threshold=thresh, ret_smooth_mat=True)
+                        if spread_df is not None and not spread_df.empty:
+                            result_dict = get_results_dict(prob_data,spread_df,sz_clf, prob_times, onset_labels, onset_run, model_class, metric, sequence_length, forecast_length, is_tau = is_tau==1)
+                            result_dict['threshold'] = thresh
+                            spread_results.append(result_dict)
+                        else:
+                            print(f"Warning: No spread data found for {patient} {onset_run} {key} with threshold {thresh}")
             else:
                 print(f"Warning: No threshold found for model {key}")
     
     # Save results
     if spread_results:
         results_df = pd.DataFrame(spread_results)
-        output_path = ospj(prodatapath, "ndd_spread_analysis_results_f1.csv")
+        output_path = ospj(prodatapath, f"ndd_spread_analysis_results_{FILE_KEY}_v2.csv")
         results_df.to_csv(output_path, index=False)
         print(f"Results saved to {output_path}")
     else:

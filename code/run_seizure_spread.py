@@ -13,7 +13,7 @@ from tqdm import tqdm
 from utils import get_data_from_bids, clean_labels
 
 # Sklearn imports
-from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
+from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score, roc_auc_score
 
 # Get the project root (parent directory of examples/)
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -64,8 +64,8 @@ def main():
     seizures_df = seizures_df[seizures_df.split == 1]
     
     # Load model thresholds
-    thresholds_df = pd.read_csv(ospj(prodatapath, "benchmark_val_thresholds_f1.csv"))  # Adjust path as needed
-    threshold_dict = dict(zip(thresholds_df.model, thresholds_df.f1_threshold))
+    thresholds_df = pd.read_csv(ospj(prodatapath, "benchmark_val_thresholds_iou.csv"))  # Adjust path as needed
+    threshold_dict = dict(zip(thresholds_df.model, thresholds_df.iou_threshold))
     
     # Models from annotation script
     model_names = ['ABSSLP', 'IMPRINT', 'WVNT', 'HFER']
@@ -107,7 +107,7 @@ def main():
                     model = model_dict[model_name](w_size=1,w_stride=0.125,fs=256)
                 # Call user's function with probability data and threshold
                 
-                first_onset_idx = int(np.argmin(np.abs(prob_times - 120)))
+                first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
                 spread_df,sz_clf = model.get_onset_and_spread(prob_data.iloc[first_onset_idx:,:],threshold=threshold,ret_smooth_mat=True)
 
                 if spread_df is not None and not spread_df.empty:
@@ -123,7 +123,7 @@ def main():
                     recall = recall_score(onset_mask, onset_pred, zero_division=0)
                     f1 = f1_score(onset_mask, onset_pred)
                     phi = matthews_corrcoef(onset_mask, onset_pred)
-
+                    auc = roc_auc_score(onset_mask, onset_pred) if sum(onset_mask) > 0 else np.nan
                     # Calculate recruitment times from indices
                     recruitment_indices = spread_df.iloc[0].values  # First row contains indices
                     recruitment_times = prob_times[recruitment_indices.astype(int)]
@@ -180,6 +180,7 @@ def main():
                             'recall': recall,
                             'f1': f1,
                             'phi': phi,
+                            'auc': auc,
                         }
                     
                     else:
@@ -205,6 +206,7 @@ def main():
                             'recall': np.nan,
                             'f1': np.nan,
                             'phi': np.nan,
+                            'auc': np.nan,
                         }
                     
                     spread_results.append(result_dict)
@@ -214,7 +216,7 @@ def main():
     # Save results
     if spread_results:
         results_df = pd.DataFrame(spread_results)
-        output_path = ospj(prodatapath, "benchmark_val_analysis_results_f1.csv")
+        output_path = ospj(prodatapath, "benchmark_val_analysis_results_iou.csv")
         results_df.to_csv(output_path, index=False)
         print(f"Results saved to {output_path}")
     else:
