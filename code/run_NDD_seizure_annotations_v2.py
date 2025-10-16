@@ -58,6 +58,22 @@ def find_optimal_f1_threshold(y_true, y_scores):
     
     return best_threshold
 
+def find_optimal_phi_threshold(y_true, y_scores):
+    """Find threshold that maximizes phi/MCC score."""
+    thresholds = np.unique(y_scores)
+    best_phi = -1
+    best_threshold = 0
+    
+    for threshold in thresholds:
+        y_pred = y_scores > threshold
+        if len(np.unique(y_pred)) > 1:  # Ensure both classes are predicted
+            phi = matthews_corrcoef(y_true, y_pred)
+            if phi > best_phi:
+                best_phi = phi
+                best_threshold = threshold
+    
+    return best_threshold
+
 def compute_all_metrics(y_true, y_scores, threshold):
     """Compute all binary classification metrics for a given threshold."""
     # Convert inputs to numpy arrays for consistent handling
@@ -199,6 +215,10 @@ def run_model_task(params: tuple) -> list:
                         # F1-optimized threshold metrics
                         f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
                         f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+                        
+                        # Phi-optimized threshold metrics
+                        phi_threshold = find_optimal_phi_threshold(onset_mask, onset_prob)
+                        phi_metrics = compute_all_metrics(onset_mask, onset_prob, phi_threshold)
 
                         results.append(
                             dict(
@@ -225,6 +245,14 @@ def run_model_task(params: tuple) -> list:
                                 f1_specificity=f1_metrics['specificity'],
                                 f1_precision=f1_metrics['precision'],
                                 f1_recall=f1_metrics['recall'],
+                                # Phi-optimized metrics
+                                phi_threshold=phi_threshold,
+                                phi_f1=phi_metrics['f1'],
+                                phi_phi=phi_metrics['phi'],
+                                phi_sensitivity=phi_metrics['sensitivity'],
+                                phi_specificity=phi_metrics['specificity'],
+                                phi_precision=phi_metrics['precision'],
+                                phi_recall=phi_metrics['recall'],
                             )
                         )
                     else:
@@ -253,6 +281,14 @@ def run_model_task(params: tuple) -> list:
                                 f1_specificity=np.nan,
                                 f1_precision=np.nan,
                                 f1_recall=np.nan,
+                                # Phi-optimized metrics
+                                phi_threshold=np.nan,
+                                phi_f1=np.nan,
+                                phi_phi=np.nan,
+                                phi_sensitivity=np.nan,
+                                phi_specificity=np.nan,
+                                phi_precision=np.nan,
+                                phi_recall=np.nan,
                             )
                         )
             
@@ -378,6 +414,10 @@ def run_model_task(params: tuple) -> list:
                     # F1-optimized threshold metrics
                     f1_threshold = find_optimal_f1_threshold(onset_mask, df)
                     f1_metrics = compute_all_metrics(onset_mask, df, f1_threshold)
+                    
+                    # Phi-optimized threshold metrics
+                    phi_threshold = find_optimal_phi_threshold(onset_mask, df)
+                    phi_metrics = compute_all_metrics(onset_mask, df, phi_threshold)
 
                     results.append(
                         dict(
@@ -404,6 +444,14 @@ def run_model_task(params: tuple) -> list:
                             f1_specificity=f1_metrics['specificity'],
                             f1_precision=f1_metrics['precision'],
                             f1_recall=f1_metrics['recall'],
+                            # Phi-optimized metrics
+                            phi_threshold=phi_threshold,
+                            phi_f1=phi_metrics['f1'],
+                            phi_phi=phi_metrics['phi'],
+                            phi_sensitivity=phi_metrics['sensitivity'],
+                            phi_specificity=phi_metrics['specificity'],
+                            phi_precision=phi_metrics['precision'],
+                            phi_recall=phi_metrics['recall'],
                         )
                     )
                 else:
@@ -432,6 +480,14 @@ def run_model_task(params: tuple) -> list:
                             f1_specificity=np.nan,
                             f1_precision=np.nan,
                             f1_recall=np.nan,
+                            # Phi-optimized metrics
+                            phi_threshold=np.nan,
+                            phi_f1=np.nan,
+                            phi_phi=np.nan,
+                            phi_sensitivity=np.nan,
+                            phi_specificity=np.nan,
+                            phi_precision=np.nan,
+                            phi_recall=np.nan,
                         )
                     )
         return results
@@ -460,8 +516,8 @@ def main():
     """
     
     # Load seizure metadata from BIDS processing
-    seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
-    seizures_df = seizures_df[seizures]
+    seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
+    seizures_df = seizures_df[seizures_df.stim == 0]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -472,7 +528,7 @@ def main():
     # all_models = [{'model': LiNDDA, 'sequence_length': 32}]
     all_models = [
         {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
-        {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
+        # {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
     ]
     # all_models = [
@@ -517,7 +573,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v2.csv"),index=False)
+    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v3.csv"),index=False)
 
 if __name__ == "__main__":
     main()

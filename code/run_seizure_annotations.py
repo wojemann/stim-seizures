@@ -74,6 +74,22 @@ def find_optimal_f1_threshold(y_true, y_scores):
     
     return best_threshold
 
+def find_optimal_phi_threshold(y_true, y_scores):
+    """Find threshold that maximizes phi/MCC score."""
+    thresholds = np.unique(y_scores)
+    best_phi = -1
+    best_threshold = 0
+    
+    for threshold in thresholds:
+        y_pred = y_scores > threshold
+        if len(np.unique(y_pred)) > 1:  # Ensure both classes are predicted
+            phi = matthews_corrcoef(y_true, y_pred)
+            if phi > best_phi:
+                best_phi = phi
+                best_threshold = threshold
+    
+    return best_threshold
+
 def compute_all_metrics(y_true, y_scores, threshold):
     """Compute all binary classification metrics for a given threshold."""
     # Convert inputs to numpy arrays for consistent handling
@@ -201,6 +217,10 @@ def run_model_task(params: tuple) -> list:
                 # F1-optimized threshold metrics
                 f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
                 f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+                
+                # Phi-optimized threshold metrics
+                phi_threshold = find_optimal_phi_threshold(onset_mask, onset_prob)
+                phi_metrics = compute_all_metrics(onset_mask, onset_prob, phi_threshold)
 
                 results.append(
                     dict(
@@ -226,6 +246,14 @@ def run_model_task(params: tuple) -> list:
                         f1_specificity=f1_metrics['specificity'],
                         f1_precision=f1_metrics['precision'],
                         f1_recall=f1_metrics['recall'],
+                        # Phi-optimized metrics
+                        phi_threshold=phi_threshold,
+                        phi_f1=phi_metrics['f1'],
+                        phi_phi=phi_metrics['phi'],
+                        phi_sensitivity=phi_metrics['sensitivity'],
+                        phi_specificity=phi_metrics['specificity'],
+                        phi_precision=phi_metrics['precision'],
+                        phi_recall=phi_metrics['recall'],
                     )
                 )
             else:
@@ -253,6 +281,14 @@ def run_model_task(params: tuple) -> list:
                         f1_specificity=np.nan,
                         f1_precision=np.nan,
                         f1_recall=np.nan,
+                        # Phi-optimized metrics
+                        phi_threshold=np.nan,
+                        phi_f1=np.nan,
+                        phi_phi=np.nan,
+                        phi_sensitivity=np.nan,
+                        phi_specificity=np.nan,
+                        phi_precision=np.nan,
+                        phi_recall=np.nan,
                     )
                 )
         
@@ -288,7 +324,7 @@ def run_model_task(params: tuple) -> list:
 
         # Check if output file already exists
         all_paths_exist = True
-        out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_name}_sz_prob.pkl")
+        out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_run-{run}_mdl-{model_name}_sz_prob.pkl")
         if glob.glob(out_path) and not OVERWRITE:  
             sz_prob = pd.read_pickle(out_path)
             sz_prob_times = sz_prob.pop('time')
@@ -344,6 +380,10 @@ def run_model_task(params: tuple) -> list:
             # F1-optimized threshold metrics
             f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
             f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+            
+            # Phi-optimized threshold metrics
+            phi_threshold = find_optimal_phi_threshold(onset_mask, onset_prob)
+            phi_metrics = compute_all_metrics(onset_mask, onset_prob, phi_threshold)
 
             results.append(
                 dict(
@@ -369,6 +409,14 @@ def run_model_task(params: tuple) -> list:
                     f1_specificity=f1_metrics['specificity'],
                     f1_precision=f1_metrics['precision'],
                     f1_recall=f1_metrics['recall'],
+                    # Phi-optimized metrics
+                    phi_threshold=phi_threshold,
+                    phi_f1=phi_metrics['f1'],
+                    phi_phi=phi_metrics['phi'],
+                    phi_sensitivity=phi_metrics['sensitivity'],
+                    phi_specificity=phi_metrics['specificity'],
+                    phi_precision=phi_metrics['precision'],
+                    phi_recall=phi_metrics['recall'],
                 )
             )
         else:
@@ -396,6 +444,14 @@ def run_model_task(params: tuple) -> list:
                     f1_specificity=np.nan,
                     f1_precision=np.nan,
                     f1_recall=np.nan,
+                    # Phi-optimized metrics
+                    phi_threshold=np.nan,
+                    phi_f1=np.nan,
+                    phi_phi=np.nan,
+                    phi_sensitivity=np.nan,
+                    phi_specificity=np.nan,
+                    phi_precision=np.nan,
+                    phi_recall=np.nan,
                 )
             )
 
@@ -431,9 +487,9 @@ def main():
             print(e)
     
     # Load seizure metadata from BIDS processing
-    seizures_df = pd.read_csv(ospj(metapath,"metadata_v6_BIDS.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
-    seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
+    seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 0)] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
     onset_time = 180          # Seizure onset time in recording (seconds)
@@ -462,10 +518,10 @@ def main():
     # y = []
     # for task in tasks[-5:]:
     #     y.append(run_model_task(task))
-    results_nested = pqdm(tasks, run_model_task, n_jobs=12)
-    # results_nested = []
-    # for task in tasks:
-    #     results_nested.append(run_model_task(task))
+    # results_nested = pqdm(tasks, run_model_task, n_jobs=12)
+    results_nested = []
+    for task in tasks:
+        results_nested.append(run_model_task(task))
     # Filter out exceptions and flatten list of lists into a single list of dicts
     flat_results = []
     for result in results_nested:
@@ -478,7 +534,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results.csv"),index=False)
     
 if __name__ == "__main__":
     main()

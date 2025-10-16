@@ -29,6 +29,7 @@ from config import Config
 # Get paths from config 
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 
+KEY = 'f1'
 
 def load_probability_files(patient, onset_run, models):
     """Load probability files for all models for a given patient/seizure"""
@@ -64,8 +65,9 @@ def main():
     seizures_df = seizures_df[seizures_df.split == 1]
     
     # Load model thresholds
-    thresholds_df = pd.read_csv(ospj(prodatapath, "benchmark_val_thresholds_iou.csv"))  # Adjust path as needed
-    threshold_dict = dict(zip(thresholds_df.model, thresholds_df.iou_threshold))
+
+    thresholds_df = pd.read_csv(ospj(prodatapath, f"benchmark_val_thresholds_{KEY}.csv"))  # Adjust path as needed
+    threshold_dict = dict(zip(thresholds_df.model, thresholds_df[KEY+'_threshold']))
     
     # Models from annotation script
     model_names = ['ABSSLP', 'IMPRINT', 'WVNT', 'HFER']
@@ -216,7 +218,7 @@ def main():
     # Save results
     if spread_results:
         results_df = pd.DataFrame(spread_results)
-        output_path = ospj(prodatapath, "benchmark_val_analysis_results_iou.csv")
+        output_path = ospj(prodatapath, f"benchmark_val_analysis_results_{KEY}.csv")
         results_df.to_csv(output_path, index=False)
         print(f"Results saved to {output_path}")
     else:

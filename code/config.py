@@ -22,6 +22,7 @@ plt.rcParams['xtick.major.width'] = 2
 plt.rcParams['ytick.major.width'] = 2
 plt.rcParams['xtick.minor.width'] = 1
 plt.rcParams['ytick.minor.width'] = 1
+plt.rcParams['legend.frameon'] = False
 
 class Config:
     # Hardcoded paths

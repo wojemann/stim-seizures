@@ -30,7 +30,7 @@ from config import Config
 # Get paths from config 
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 
-FILE_KEY = 'iou'
+FILE_KEY = 'f1'
 
 
 def load_probability_files(patient, onset_run, model_dicts):
@@ -106,9 +106,9 @@ def main():
     # ]
     all_models = [
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1},
-        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 2, 'forecast_length': 1},
-        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 4, 'forecast_length': 1},
-        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 8, 'forecast_length': 1},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 2, 'forecast_length': 1},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 4, 'forecast_length': 1},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 8, 'forecast_length': 1},
         # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 32, 'forecast_length': 1},
         {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 1},
     ]
@@ -313,7 +313,7 @@ def main():
                         result_dict['threshold'] = thresh
                         spread_results.append(result_dict)
                 else:
-                    for is_tau,thresh in enumerate([threshold, model.get_threshold(prob_data.iloc[first_onset_idx:,:], 'medianover')]):
+                    for is_tau,thresh in enumerate([threshold, model.get_threshold(prob_data.iloc[first_onset_idx:,:], 'automedian')]):
                         spread_df, sz_clf = model.get_onset_and_spread(prob_data.iloc[first_onset_idx:,:], threshold=thresh, ret_smooth_mat=True)
                         if spread_df is not None and not spread_df.empty:
                             result_dict = get_results_dict(prob_data,spread_df,sz_clf, prob_times, onset_labels, onset_run, model_class, metric, sequence_length, forecast_length, is_tau = is_tau==1)
