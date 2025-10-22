@@ -31,6 +31,7 @@ from config import Config
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 
 FILE_KEY = 'f1'
+MODEL_VERSION = 'nopass_nolayernorm'  # Version suffix for probability files (use '' for default, 'nopass_nolayernorm' for new hyperparameters, etc.)
 
 
 def load_probability_files(patient, onset_run, model_dicts):
@@ -56,9 +57,17 @@ def load_probability_files(patient, onset_run, model_dicts):
             #     pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_{metric}_prob_forecast-{forecast}.pkl"
             pattern = f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}"
             if metric == 'prob':
-                pattern += f"_sz_prob_forecast-{forecast_length}.pkl"
+                pattern += f"_sz_prob_forecast-{forecast_length}"
             else:
-                pattern += f"_{metric}_prob_forecast-{forecast_length}.pkl"
+                pattern += f"_{metric}_prob_forecast-{forecast_length}"
+            
+            # Determine if this model should use the version suffix
+            # Only apply version to models that are being modified (e.g., GIN)
+            if model_name in ['GIN']:
+                pattern += f"{MODEL_VERSION}.pkl"
+            else:
+                pattern += ".pkl"
+            
             prob_path = glob.glob(ospj(prob_dir, pattern))
             if prob_path:
                 prob_files[key] = {
@@ -82,7 +91,7 @@ def main():
     """
     
     # Load seizure metadata
-    seizures_df = pd.read_csv(ospj(metapath, "metadata_v6_BIDS.csv"))
+    seizures_df = pd.read_csv(ospj(metapath, "metadata_v7_BIDS.csv"))
     seizures_df = seizures_df[seizures_df.split == 1]
     
     # Load model thresholds - expecting format: model_metric_sequence_forecast

@@ -41,6 +41,7 @@ plt.rcParams['image.cmap'] = 'magma'
 
 # Global configuration
 OVERWRITE = False  # Whether to overwrite existing probability matrix files
+MODEL_VERSION = 'nopass_nolayernorm'  # Version suffix for probability files (use '' for default, '_v2' for new hyperparameters, etc.)
 
 def find_optimal_f1_threshold(y_true, y_scores):
     """Find threshold that maximizes F1 score."""
@@ -167,12 +168,20 @@ def run_model_task(params: tuple) -> list:
             
             # Check all three output file types
             out_dir = ospj(prodatapath, 'sz_prob', patient)
-            base_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}.pkl")
+            
+            # Determine if this model should use the version suffix
+            # Only apply version to models that are being modified (e.g., GIN)
+            if model_name in ['GIN']:
+                version_suffix = MODEL_VERSION
+            else:
+                version_suffix = ''
+            
+            base_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}{version_suffix}.pkl")
             
             model_paths[f"{model_name}_{sequence_length}_{forecast_length}"] = {
                 'mse_prob': base_path.replace('sz_prob_', 'mse_prob_'),
-                'mse_z_prob': base_path.replace('sz_prob_', 'mse_z_prob_'),
-                'mse_zs_prob': base_path.replace('sz_prob_', 'mse_zs_prob_')
+                # 'mse_z_prob': base_path.replace('sz_prob_', 'mse_z_prob_'),
+                # 'mse_zs_prob': base_path.replace('sz_prob_', 'mse_zs_prob_')
             }
             
             # Check if any file is missing
@@ -196,7 +205,7 @@ def run_model_task(params: tuple) -> list:
                 
                 paths = model_paths[f"{model_name}_{sequence_length}_{forecast_length}"]
                 
-                for metric, file_path in zip(['mse', 'mse_z', 'mse_zs'], [paths['mse_prob'], paths['mse_z_prob'], paths['mse_zs_prob']]):
+                for metric, file_path in zip(['mse'], [paths['mse_prob']]):
                     df = pd.read_pickle(file_path)
                     sz_prob_times = df.pop('time')
                     onset_mask = [ch.split('-')[0] in onset_labels for ch in df.columns]
@@ -381,7 +390,15 @@ def run_model_task(params: tuple) -> list:
                 raise ValueError(f"Model {model_class} not supported")
 
             model.fit(seizure_nart.iloc[:120*fs,:])
-            out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}.pkl")
+            
+            # Determine if this model should use the version suffix
+            # Only apply version to models that are being modified (e.g., GIN)
+            if model_name in ['GIN']:
+                version_suffix = MODEL_VERSION
+            else:
+                version_suffix = ''
+            
+            out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}{version_suffix}.pkl")
             
             mse_zs_prob = model(seizure_nart)
             mse_prob = model.mse_df
@@ -517,7 +534,7 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
-    seizures_df = seizures_df[seizures_df.stim == 0]
+    seizures_df = seizures_df[(seizures_df.split != 2)]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -527,9 +544,13 @@ def main():
     # all_models = [{'model': LiNDDA, 'sequence_length': 1}]
     # all_models = [{'model': LiNDDA, 'sequence_length': 32}]
     all_models = [
-        {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
+        {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
+        {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
         # {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 16, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 32, 'forecast_length': 1},
+
     ]
     # all_models = [
     #     {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
@@ -573,7 +594,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v3.csv"),index=False)
+    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v4.csv"),index=False)
 
 if __name__ == "__main__":
     main()

@@ -95,7 +95,7 @@ def evaluate_model(param_dict):
             num_epochs = 500,
             batch_size = batch_size,
             verbose = verbose,
-            use_cuda = True,
+            use_cuda = False,
         )
     elif param_dict['model'] == MINDD:
         reg = param_dict['model'](
@@ -110,7 +110,7 @@ def evaluate_model(param_dict):
             num_epochs = 200,
             batch_size = batch_size,
             verbose = verbose,
-            use_cuda = True,
+            use_cuda = False,
         )
     else:
         reg = param_dict['model'](
@@ -124,11 +124,11 @@ def evaluate_model(param_dict):
             num_epochs = 200,
             batch_size = batch_size,
             patience = 2,
-            lr = 0.0005,
+            lr = 0.001,
             val_split = 0.1,
             early_stopping = True,
             verbose = verbose,
-            use_cuda = True,
+            use_cuda = False,
         )
     val_idx = int(param_dict['data'].shape[0] * 0.1)
     results_dicts = []
@@ -189,8 +189,8 @@ def evaluate_model(param_dict):
 
 param_dict_list = []
 batch_size = 2048
-# for pt in ['HUP126','HUP221','HUP276']:
-for pt in ['HUP065','HUP078','HUP126','HUP221','HUP276']:
+for pt in ['HUP126','HUP221','HUP276']:
+# for pt in ['HUP065','HUP078','HUP126','HUP221','HUP276']:
     # Load in the ieeg clip
     X,fs_raw = get_data_from_bids(ospj(datapath,"BIDS"),pt,'interictal')
     X.columns = clean_labels(X.columns,pt)
@@ -198,7 +198,6 @@ for pt in ['HUP065','HUP078','HUP126','HUP221','HUP276']:
 
     X,fs_raw,_ = preprocess_for_detection(X.loc[:,neural_channels],fs_raw)
     n_channels = X.shape[1]
-    print (X.shape)
     # SAMPLE DATA FOR TESTING
 # for _ in range(1):
 #     pt = 'test'
@@ -206,74 +205,74 @@ for pt in ['HUP065','HUP078','HUP126','HUP221','HUP276']:
     # n_channels = X.shape[1]
     # END SAMPLE DATA FOR TESTING
 
-    for x_len in [30, 60, 120, 300, 540]:
+    for x_len in [30, 60, 90, 120]:# 300, 540]:
     # for x_len in [90]:
         # using the fs from the BIDS, clip the Xtrain and assign it to state dict
-        for sequence_length in [1,2,8,32,64,128]:
-            for num_layers in [1,2,3]:
+        for sequence_length in [1,2,8,16,32]: #,64,128]:
+            for num_layers in [1,2]:
                 
-                for param_scale in [1,2,3]:
+                # for param_scale in [1,2,3]:
 
-                    hidden_size = int(sequence_length * n_channels * param_scale // num_layers)
-                    param_dict_list.append(
-                        dict(
-                                data = X.iloc[:x_len*fs_raw,:],
-                                test = X.iloc[60*fs_raw:,:],
-                                patient = pt,
-                                n_channels = n_channels,
-                                duration = x_len,
-                                sequence_length = sequence_length,
-                                num_layers = num_layers,
-                                param_scale = param_scale,
-                                hidden_size = hidden_size,
-                                num_stacks = None,
-                                model = MINDD
-                            )
-                    )
-
-                # for num_stacks in [1]:
-                #     for hidden_size in [int(n_channels*0.5),int(n_channels)]:
-                #         for model in [GIN,LiRNDDA]: # LiRNDDA
-                #             param_dict_list.append(
-                #                 dict(
-                #                     data = X.iloc[:x_len*fs_raw,:],
-                #                     test = X.iloc[60*fs_raw:,:],
-                #                     patient = pt,
-                #                     n_channels = n_channels,
-                #                     duration = x_len,
-                #                     sequence_length = sequence_length,
-                #                     num_layers = num_layers,
-                #                     param_scale = None,
-                #                     hidden_size = hidden_size,
-                #                     num_stacks = num_stacks,
-                #                     model = model
-                #                 )
+                #     hidden_size = int(sequence_length * n_channels * param_scale // num_layers)
+                #     param_dict_list.append(
+                #         dict(
+                #                 data = X.iloc[:x_len*fs_raw,:],
+                #                 test = X.iloc[60*fs_raw:,:],
+                #                 patient = pt,
+                #                 n_channels = n_channels,
+                #                 duration = x_len,
+                #                 sequence_length = sequence_length,
+                #                 num_layers = num_layers,
+                #                 param_scale = param_scale,
+                #                 hidden_size = hidden_size,
+                #                 num_stacks = None,
+                #                 model = MINDD
                 #             )
-            param_dict_list.append(
-                dict(
-                    data = X.iloc[:x_len*fs_raw,:],
-                    test = X.iloc[60*fs_raw:,:],
-                    patient = pt,
-                    n_channels = n_channels,
-                    duration = x_len,
-                    sequence_length = sequence_length,
-                    num_layers = None,
-                    param_scale = None,
-                    hidden_size = None,
-                    num_stacks = None,
-                    model = LiNDDA
-                )
-            )
+                #     )
 
-res_series_list = pqdm(param_dict_list, evaluate_model, n_jobs=6)
+                for num_stacks in [1]:
+                    for hidden_size in [10,int(n_channels)]:
+                        for model in [GIN]: # LiRNDDA
+                            param_dict_list.append(
+                                dict(
+                                    data = X.iloc[:x_len*fs_raw,:],
+                                    test = X.iloc[60*fs_raw:,:],
+                                    patient = pt,
+                                    n_channels = n_channels,
+                                    duration = x_len,
+                                    sequence_length = sequence_length,
+                                    num_layers = num_layers,
+                                    param_scale = None,
+                                    hidden_size = hidden_size,
+                                    num_stacks = num_stacks,
+                                    model = model
+                                )
+                            )
+            # param_dict_list.append(
+                # dict(
+                #     data = X.iloc[:x_len*fs_raw,:],
+                #     test = X.iloc[60*fs_raw:,:],
+                #     patient = pt,
+                #     n_channels = n_channels,
+                #     duration = x_len,
+                #     sequence_length = sequence_length,
+                #     num_layers = None,
+                #     param_scale = None,
+                #     hidden_size = None,
+                #     num_stacks = None,
+                #     model = LiNDDA
+                # )
+            # )
 
-# res_series_list = []
-# for param_dict in tqdm(param_dict_list):
-#     res_series_list.append(evaluate_model(param_dict))
+# res_series_list = pqdm(param_dict_list, evaluate_model, n_jobs=6)
+
+res_series_list = []
+for param_dict in tqdm(param_dict_list):
+    res_series_list.append(evaluate_model(param_dict))
 
 # pickle.dump(res_series_list, open(ospj(prodatapath,'res_series_list_deep_2_checkpoint.pkl'), 'wb'))
 res_series_list = pd.concat([r for r in res_series_list if not isinstance(r, Exception)])
-# res_series_list.to_csv(ospj(prodatapath,'res_series_list_deep_2.csv'))
+res_series_list.to_csv(ospj(prodatapath,'res_series_list_deep_3.csv'))
 
 
 # for param_dict in param_dict_list:

@@ -351,7 +351,7 @@ def run_model_task(params: tuple) -> list:
 
             if wavecheck:
                 model = model_class(fs=fs, w_size=1, w_stride = 0.5, 
-                model_path = '/mnt/sauce/littlab/users/wojemann/dynasd_data/CHECKPOINTS/WaveNet/v111.hdf5',
+                model_path = ospj(prodatapath,'CHECKPOINTS/WaveNet/v111.hdf5'),
                 verbose = False,
                 batch_size = 512)
             else:
@@ -489,7 +489,7 @@ def main():
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
-    seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 0)] # Filter for only seizures that have soft onset labels
+    seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 1)] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
     onset_time = 180          # Seizure onset time in recording (seconds)

@@ -61,7 +61,7 @@ from sklearn.metrics import roc_curve,auc
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-import nibabel as nii
+# import nibabel as nii
 
 warnings.filterwarnings("ignore")
 
@@ -317,6 +317,75 @@ def clean_labels(channel_li: list, pt: str) -> list:
                 lead = conv_dict[lead]
                 
     return new_channels
+
+
+def load_electrode_localizations(patient, prodatapath):
+    """Load electrode localizations for a patient and return region mapping
+    
+    Args:
+        patient (str): Patient ID (e.g., 'HUP123')
+        prodatapath (str): Path to processed data directory
+    
+    Returns:
+        dict or None: Mapping from first contact to region name, or None if unavailable
+    """
+    try:
+        # Load RID mapping
+        rid_hup_map = pd.read_csv(ospj(prodatapath, 'electrode_localizations', 'summary.csv'))
+        hup_num = int(patient.replace('HUP', '').replace('CHOP', ''))
+        
+        # Get RID
+        if 'hupid' in rid_hup_map.columns:
+            rid_row = rid_hup_map[rid_hup_map.hupid == hup_num]
+        elif 'hupsubjno' in rid_hup_map.columns:
+            rid_row = rid_hup_map[rid_hup_map.hupsubjno == hup_num]
+        else:
+            return None
+        
+        if len(rid_row) == 0:
+            return None
+        
+        rid = str(rid_row['rid'].values[0]).zfill(4)
+        
+        # Load electrode localizations
+        elec_path = ospj(prodatapath, 'electrode_localizations', f'sub-RID{rid}.csv')
+        if not os.path.exists(elec_path):
+            return None
+        
+        electrode_df = pd.read_csv(elec_path)
+        
+        # Clean channel labels to match probability matrix format
+        if 'labels' in electrode_df.columns:
+            electrode_df['channel_clean'] = electrode_df['labels'].apply(lambda x: clean_labels([x], patient)[0])
+        else:
+            return None
+        
+        # Get region column
+        if 'roi' in electrode_df.columns:
+            region_col = 'roi'
+        else:
+            return None
+        
+        # Filter out excluded regions
+        excluded_keywords = ['white', 'ventricle', 'csf', 'outside', 'unknown', 'emptylabel']
+        mask = pd.Series([True] * len(electrode_df))
+        for keyword in excluded_keywords:
+            mask &= ~electrode_df[region_col].astype(str).str.lower().str.contains(keyword)
+        electrode_df = electrode_df[mask].copy()
+        
+        # Create channel-to-region mapping (using first contact for bipolar)
+        ch_to_region = {}
+        for _, row in electrode_df.iterrows():
+            ch_clean = row['channel_clean']
+            # Handle bipolar: extract first contact
+            first_contact = ch_clean.split('-')[0] if '-' in ch_clean else ch_clean
+            ch_to_region[first_contact] = row[region_col]
+        
+        return ch_to_region
+        
+    except Exception as e:
+        print(f"Warning: Could not load electrode localizations for {patient}: {e}")
+        return None
 
 
 def get_apn_dkt(
