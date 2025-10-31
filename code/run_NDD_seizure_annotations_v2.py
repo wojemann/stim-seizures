@@ -364,9 +364,19 @@ def run_model_task(params: tuple) -> list:
                     sequence_length = sequence_length,
                     forecast_length = forecast_length,
                     closeform = True,
+                    val_split = val_split,
+                    patience = patience,
+                    lr = 0.01,
+                    early_stopping = early_stopping,
+                    num_epochs = 100,
                     batch_size = batch_size,
                     verbose = verbose,
                 )
+                try:
+                    model.fit(seizure_nart.iloc[:120*fs,:])
+                except:
+                    model.closeform = False
+                    model.fit(seizure_nart.iloc[:120*fs,:])
             elif model_class == GIN:
                 model = model_class(
                 fs=fs,
@@ -386,10 +396,11 @@ def run_model_task(params: tuple) -> list:
                 use_cuda=True,
                 early_stopping = False if sequence_length == 12 else early_stopping
                 )
+                model.fit(seizure_nart.iloc[:120*fs,:])
             else:
                 raise ValueError(f"Model {model_class} not supported")
 
-            model.fit(seizure_nart.iloc[:120*fs,:])
+            
             
             # Determine if this model should use the version suffix
             # Only apply version to models that are being modified (e.g., GIN)
@@ -400,8 +411,8 @@ def run_model_task(params: tuple) -> list:
             
             out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}{version_suffix}.pkl")
             
-            mse_zs_prob = model(seizure_nart)
-            mse_prob = model.mse_df
+            mse_prob = model(seizure_nart)
+            mse_zs_prob = model.mse_z_df
             mse_z_prob = model.mse_z_df.abs()
             sz_prob_times = model.get_win_times(len(seizure_nart))
             # sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
@@ -534,7 +545,7 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
-    seizures_df = seizures_df[(seizures_df.split != 2)]
+    seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 0)]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -544,13 +555,13 @@ def main():
     # all_models = [{'model': LiNDDA, 'sequence_length': 1}]
     # all_models = [{'model': LiNDDA, 'sequence_length': 32}]
     all_models = [
-        {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
+        # {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
         {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
+        # {'model': LiNDDA, 'sequence_length': 9, 'forecast_length': 6},
         # {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
-        {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
         # {'model': GIN, 'sequence_length': 16, 'forecast_length': 1},
         # {'model': GIN, 'sequence_length': 32, 'forecast_length': 1},
-
     ]
     # all_models = [
     #     {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
@@ -594,7 +605,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v4.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v4.csv"),index=False)
 
 if __name__ == "__main__":
     main()

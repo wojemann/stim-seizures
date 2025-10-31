@@ -319,7 +319,7 @@ def clean_labels(channel_li: list, pt: str) -> list:
     return new_channels
 
 
-def load_electrode_localizations(patient, prodatapath):
+def load_electrode_localizations(patient, prodatapath,keep_white_matter = False, return_df = False):
     """Load electrode localizations for a patient and return region mapping
     
     Args:
@@ -356,7 +356,7 @@ def load_electrode_localizations(patient, prodatapath):
         
         # Clean channel labels to match probability matrix format
         if 'labels' in electrode_df.columns:
-            electrode_df['channel_clean'] = electrode_df['labels'].apply(lambda x: clean_labels([x], patient)[0])
+            electrode_df['labels'] = electrode_df['labels'].apply(lambda x: clean_labels([x], patient)[0])
         else:
             return None
         
@@ -367,7 +367,10 @@ def load_electrode_localizations(patient, prodatapath):
             return None
         
         # Filter out excluded regions
-        excluded_keywords = ['white', 'ventricle', 'csf', 'outside', 'unknown', 'emptylabel']
+        if  keep_white_matter:
+            excluded_keywords = ['ventricle', 'csf', 'outside', 'unknown', 'emptylabel']
+        else:
+            excluded_keywords = ['white', 'ventricle', 'csf', 'outside', 'unknown', 'emptylabel']
         mask = pd.Series([True] * len(electrode_df))
         for keyword in excluded_keywords:
             mask &= ~electrode_df[region_col].astype(str).str.lower().str.contains(keyword)
@@ -376,16 +379,64 @@ def load_electrode_localizations(patient, prodatapath):
         # Create channel-to-region mapping (using first contact for bipolar)
         ch_to_region = {}
         for _, row in electrode_df.iterrows():
-            ch_clean = row['channel_clean']
+            ch_clean = row['labels']
             # Handle bipolar: extract first contact
             first_contact = ch_clean.split('-')[0] if '-' in ch_clean else ch_clean
             ch_to_region[first_contact] = row[region_col]
         
-        return ch_to_region
+        if return_df:
+            return electrode_df
+        else:
+            return ch_to_region
         
     except Exception as e:
         print(f"Warning: Could not load electrode localizations for {patient}: {e}")
         return None
+
+
+def aggregate_prob_to_regions(sz_prob, ch_to_region):
+    """Aggregate channel probability time series to region level by averaging.
+    
+    Args:
+        sz_prob (pd.DataFrame): Channel probability dataframe (time x channels)
+        ch_to_region (dict): Mapping from first contact to region name
+    
+    Returns:
+        pd.DataFrame: Region probability dataframe (time x regions)
+    """
+    if sz_prob is None or len(sz_prob.columns) == 0:
+        return pd.DataFrame()
+    
+    # Group channels by region
+    region_prob_dict = {}
+    
+    for ch in sz_prob.columns:
+        # Extract first contact from bipolar channel
+        first_contact = ch.split('-')[0]
+        region = ch_to_region.get(first_contact)
+        
+        if region is None:
+            continue
+        
+        if region not in region_prob_dict:
+            region_prob_dict[region] = []
+        
+        # Append this channel's time series to the region
+        region_prob_dict[region].append(sz_prob[ch].values)
+    
+    if len(region_prob_dict) == 0:
+        return pd.DataFrame()
+    
+    # Average probabilities within each region across channels
+    region_prob_data = {}
+    for region, ch_probs in region_prob_dict.items():
+        # Average across all channels in this region (mean over axis 0)
+        region_prob_data[region] = np.mean(ch_probs, axis=0)
+    
+    # Create DataFrame with same index as original
+    sz_prob_region = pd.DataFrame(region_prob_data, index=sz_prob.index)
+    
+    return sz_prob_region
 
 
 def get_apn_dkt(
@@ -1561,3 +1612,288 @@ def index_of_union_threshold(y_true: np.ndarray,
     optimal_specificity = specificity[best_idx]
     
     return optimal_threshold, optimal_sensitivity, optimal_specificity, auc_value
+    
+##################################DeLong's Test#####################################
+
+"""
+DeLong's Test for Comparing Two Correlated ROC Curves
+
+This implementation computes DeLong's test to compare the AUCs of two classifiers
+evaluated on the same dataset. The test accounts for the correlation between the
+two ROC curves since they're evaluated on the same samples.
+
+Reference:
+DeLong, E. R., DeLong, D. M., & Clarke-Pearson, D. L. (1988).
+Comparing the areas under two or more correlated receiver operating characteristic curves:
+a nonparametric approach. Biometrics, 837-845.
+"""
+
+import numpy as np
+from scipy import stats
+
+
+def compute_midrank(x):
+    """
+    Compute midranks for tied values.
+    
+    Parameters:
+    -----------
+    x : array-like
+        Values to rank
+        
+    Returns:
+    --------
+    array : midranks for the input values
+    """
+    # Get the sorted indices
+    sorted_indices = np.argsort(x)
+    # Compute ranks (1-indexed)
+    ranks = np.empty_like(sorted_indices, dtype=float)
+    ranks[sorted_indices] = np.arange(1, len(x) + 1)
+    
+    # Handle ties by computing midranks
+    unique_vals, inverse_indices = np.unique(x, return_inverse=True)
+    
+    for i, val in enumerate(unique_vals):
+        mask = (inverse_indices == i)
+        ranks[mask] = ranks[mask].mean()
+    
+    return ranks
+
+
+def compute_ground_truth_scores(y_true, y_pred):
+    """
+    Compute the structural components for AUC calculation.
+    
+    Parameters:
+    -----------
+    y_true : array-like, shape (n_samples,)
+        True binary labels (0 or 1)
+    y_pred : array-like, shape (n_samples,)
+        Predicted scores/probabilities
+        
+    Returns:
+    --------
+    tuple : (V_10, V_01) where V_10 are scores for positive class and V_01 for negative
+    """
+    # Ensure arrays
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
+    # Separate predictions by class
+    pos_scores = y_pred[y_true == 1]
+    neg_scores = y_pred[y_true == 0]
+    
+    m = len(pos_scores)  # number of positive samples
+    n = len(neg_scores)  # number of negative samples
+    
+    # Compute V_10: For each positive sample, compute the proportion of 
+    # negative samples with lower scores
+    V_10 = np.zeros(m)
+    for i, pos_score in enumerate(pos_scores):
+        V_10[i] = np.sum(neg_scores < pos_score) + 0.5 * np.sum(neg_scores == pos_score)
+    V_10 = V_10 / n
+    
+    # Compute V_01: For each negative sample, compute the proportion of
+    # positive samples with higher scores
+    V_01 = np.zeros(n)
+    for j, neg_score in enumerate(neg_scores):
+        V_01[j] = np.sum(pos_scores > neg_score) + 0.5 * np.sum(pos_scores == neg_score)
+    V_01 = V_01 / m
+    
+    return V_10, V_01
+
+
+def compute_auc_and_variance(y_true, y_pred):
+    """
+    Compute AUC and its variance using DeLong's method.
+    
+    Parameters:
+    -----------
+    y_true : array-like, shape (n_samples,)
+        True binary labels (0 or 1)
+    y_pred : array-like, shape (n_samples,)
+        Predicted scores/probabilities
+        
+    Returns:
+    --------
+    tuple : (auc, variance)
+    """
+    V_10, V_01 = compute_ground_truth_scores(y_true, y_pred)
+    
+    m = len(V_10)  # number of positive samples
+    n = len(V_01)  # number of negative samples
+    
+    # AUC is the mean of V_10 (or equivalently, mean of V_01)
+    auc = np.mean(V_10)
+    
+    # Compute variance using DeLong's formula
+    # Var(AUC) = S_X/m + S_Y/n
+    # where S_X is variance among positive samples and S_Y among negative samples
+    
+    S_X = np.var(V_10, ddof=1) if m > 1 else 0
+    S_Y = np.var(V_01, ddof=1) if n > 1 else 0
+    
+    var_auc = S_X / m + S_Y / n
+    
+    return auc, var_auc
+
+
+def compute_covariance(y_true, y_pred1, y_pred2):
+    """
+    Compute covariance between two AUCs using DeLong's method.
+    
+    Parameters:
+    -----------
+    y_true : array-like, shape (n_samples,)
+        True binary labels (0 or 1)
+    y_pred1 : array-like, shape (n_samples,)
+        Predicted scores for first classifier
+    y_pred2 : array-like, shape (n_samples,)
+        Predicted scores for second classifier
+        
+    Returns:
+    --------
+    float : covariance between the two AUCs
+    """
+    # Get structural components for both classifiers
+    V_10_1, V_01_1 = compute_ground_truth_scores(y_true, y_pred1)
+    V_10_2, V_01_2 = compute_ground_truth_scores(y_true, y_pred2)
+    
+    m = len(V_10_1)  # number of positive samples
+    n = len(V_01_1)  # number of negative samples
+    
+    # Compute covariances
+    if m > 1:
+        cov_X = np.cov(V_10_1, V_10_2, ddof=1)[0, 1]
+    else:
+        cov_X = 0
+        
+    if n > 1:
+        cov_Y = np.cov(V_01_1, V_01_2, ddof=1)[0, 1]
+    else:
+        cov_Y = 0
+    
+    # Total covariance
+    cov = cov_X / m + cov_Y / n
+    
+    return cov
+
+
+def delongs_test(y_true, y_pred1, y_pred2):
+    """
+    Perform DeLong's test to compare two correlated ROC curves.
+    
+    Parameters:
+    -----------
+    y_true : array-like, shape (n_samples,)
+        True binary labels (0 or 1)
+    y_pred1 : array-like, shape (n_samples,)
+        Predicted scores for first classifier
+    y_pred2 : array-like, shape (n_samples,)
+        Predicted scores for second classifier
+        
+    Returns:
+    --------
+    dict : Dictionary containing:
+        - auc1: AUC of first classifier
+        - auc2: AUC of second classifier
+        - auc_diff: Difference between AUCs (auc1 - auc2)
+        - z_score: Z-statistic for the test
+        - p_value: Two-tailed p-value
+        - se: Standard error of the difference
+    """
+    # Ensure binary labels
+    y_true = np.array(y_true)
+    if not np.all(np.isin(y_true, [0, 1])):
+        raise ValueError("y_true must contain only 0 and 1")
+    
+    # Compute AUCs and variances
+    auc1, var1 = compute_auc_and_variance(y_true, y_pred1)
+    auc2, var2 = compute_auc_and_variance(y_true, y_pred2)
+    
+    # Compute covariance
+    cov = compute_covariance(y_true, y_pred1, y_pred2)
+    
+    # Compute standard error of the difference
+    # Var(AUC1 - AUC2) = Var(AUC1) + Var(AUC2) - 2*Cov(AUC1, AUC2)
+    var_diff = var1 + var2 - 2 * cov
+    se = np.sqrt(var_diff)
+    
+    # Compute z-score
+    auc_diff = auc1 - auc2
+    z_score = auc_diff / se if se > 0 else 0
+    
+    # Compute two-tailed p-value
+    p_value = 2 * (1 - stats.norm.cdf(abs(z_score)))
+    
+    return {
+        'auc1': auc1,
+        'auc2': auc2,
+        'auc_diff': auc_diff,
+        'z_score': z_score,
+        'p_value': p_value,
+        'se': se,
+        'var1': var1,
+        'var2': var2,
+        'covariance': cov
+    }
+
+
+def print_test_results(results):
+    """
+    Print formatted results of DeLong's test.
+    
+    Parameters:
+    -----------
+    results : dict
+        Dictionary returned by delongs_test()
+    """
+    print("=" * 60)
+    print("DeLong's Test Results")
+    print("=" * 60)
+    print(f"AUC of Classifier 1: {results['auc1']:.4f}")
+    print(f"AUC of Classifier 2: {results['auc2']:.4f}")
+    print(f"Difference (AUC1 - AUC2): {results['auc_diff']:.4f}")
+    print(f"Standard Error: {results['se']:.4f}")
+    print(f"Z-score: {results['z_score']:.4f}")
+    print(f"P-value (two-tailed): {results['p_value']:.4f}")
+    print("-" * 60)
+    
+    if results['p_value'] < 0.05:
+        print("Result: The AUCs are significantly different (p < 0.05)")
+    else:
+        print("Result: No significant difference between AUCs (p >= 0.05)")
+    
+    print("=" * 60)
+
+
+# Example usage
+if __name__ == "__main__":
+    # Set random seed for reproducibility
+    np.random.seed(42)
+    
+    # Generate synthetic data
+    n_samples = 200
+    
+    # True labels (binary)
+    y_true = np.random.binomial(1, 0.5, n_samples)
+    
+    # Predictions from two classifiers (correlated because evaluated on same data)
+    # Classifier 1: better performance
+    y_pred1 = y_true + np.random.normal(0, 0.3, n_samples)
+    
+    # Classifier 2: slightly worse performance
+    y_pred2 = y_true + np.random.normal(0, 0.4, n_samples)
+    
+    # Perform DeLong's test
+    results = delongs_test(y_true, y_pred1, y_pred2)
+    
+    # Print results
+    print_test_results(results)
+    
+    # Additional information
+    print("\nAdditional Statistics:")
+    print(f"Variance of AUC1: {results['var1']:.6f}")
+    print(f"Variance of AUC2: {results['var2']:.6f}")
+    print(f"Covariance: {results['covariance']:.6f}")

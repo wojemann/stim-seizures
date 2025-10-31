@@ -554,7 +554,6 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
     
     return metrics
 
-
 def _empty_region_metrics():
     """Return dict of NaN region metrics"""
     return {
@@ -634,23 +633,23 @@ def main():
     
     # Load seizure metadata
     seizures_df = pd.read_csv(ospj(metapath, "metadata_v7_BIDS.csv"))
-    seizures_df = seizures_df[(seizures_df.split == 2)]# & (seizures_df.stim == 1)]
+    seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 0)]
     
     print(f"Found {len(seizures_df)} test seizures")
     
     # Load clinical annotations
     annotations_df = pd.read_pickle(ospj(prodatapath, "threshold_tuning_consensus_v2.pkl"))
-    # annotations_df = annotations_df[annotations_df.stim == 0]
+    annotations_df = annotations_df[annotations_df.stim == 0]
     # Load learned thresholds   
     ndd_thresholds = {}
     benchmark_thresholds = {}
     
     for metric in ['phi', 'f1', 'iou']:
         try:
-            ndd_thresh_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{metric}_v2.csv"))
+            ndd_thresh_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{metric}_v3_median.csv"))
             ndd_thresholds[metric] = dict(zip(ndd_thresh_df.model, ndd_thresh_df[f'{metric}_threshold']))
         except:
-            print(f"Warning: Could not load ndd_val_thresholds_{metric}_v2.csv")
+            print(f"Warning: Could not load ndd_val_thresholds_{metric}_v3.csv")
             ndd_thresholds[metric] = {}
         
         try:
@@ -662,11 +661,11 @@ def main():
     
     # Model configurations
     ndd_models = [
-        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
-        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 3, 'forecast_length': 2, 'metric': 'mse', 'suffix': ''},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 3, 'forecast_length': 2, 'metric': 'mse', 'suffix': ''},
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 5, 'forecast_length': 4, 'metric': 'mse', 'suffix': ''},
+        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 9, 'forecast_length': 6, 'metric': 'mse', 'suffix': ''},
         {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 1, 'metric': 'mse', 'suffix': MODEL_VERSION},
-        {'model': GIN, 'model_name': 'GIN', 'sequence_length': 32, 'forecast_length': 1, 'metric': 'mse', 'suffix': MODEL_VERSION},
     ]
     
     benchmark_models = [
@@ -675,6 +674,7 @@ def main():
         {'model': WVNT, 'model_name': 'WVNT', 'suffix': ''}, 
         {'model': HFER, 'model_name': 'HFER', 'suffix': ''}
     ]
+
     # Results storage
     results = []
     
@@ -854,7 +854,7 @@ def main():
             results.append(result_dict)
             
             # Generate example figure
-            if patient == 'HUP238' and int(onset_run) == 290006 and model_name == 'GIN':
+            if patient == 'HUP238' and int(onset_run) == 290006 and model_name == 'LiNDDA':
                 print(f"\nGenerating example figure for {patient} {onset_run} {model_name}...")
                 generate_example_figure(sz_prob_smooth, prob_chs, onset_idx,
                                       all_chs, ueo_consensus, ueo_annotators, figpath)
@@ -878,7 +878,7 @@ def main():
             results_csv.append(result_csv)
         
         results_df_csv = pd.DataFrame(results_csv)
-        csv_path = ospj(prodatapath, "test_validation_results_nopass_nolayernorm.csv")
+        csv_path = ospj(prodatapath, "test_validation_results_v2.csv")
         results_df_csv.to_csv(csv_path, index=False)
         print(f"CSV results (without probability data) saved to {csv_path}")
         

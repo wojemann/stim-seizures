@@ -9,57 +9,35 @@ import re
 from tqdm import tqdm
 
 from config import Config
-from utils import clean_labels, load_electrode_localizations
+from utils import clean_labels, load_electrode_localizations, aggregate_prob_to_regions
 
 # Get paths from config
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath', 'prodatapath', 'figpath', 'metapath'])
 
 # Model configuration - should match all_pts_seizure_annotation.py
+# model_dict = {
+#     'model_name': 'GIN', 
+#     'sequence_length': 12, 
+#     'forecast_length': 1, 
+#     'suffix': '',
+#     'metric': 'mse'
+# }
+# model_dict = {
+#     'model_name': 'LiNDDA', 
+#     'sequence_length': 5, 
+#     'forecast_length': 4, 
+#     'suffix': '',
+#     'metric': 'mse'
+# }
 model_dict = {
-    'model_name': 'GIN', 
-    'sequence_length': 12, 
-    'forecast_length': 1, 
-    'suffix': 'nopass_nolayernorm',
-    'metric': 'mse'
+    'model_name': 'WVNT',
+    'sequence_length': None,
+    'forecast_length': None,
+    'suffix': '',
+    'metric': 'prob'
 }
-
-thresh_str = 'pretrained'
-
-
-def aggregate_prob_to_regions(sz_prob, ch_to_region):
-    """Aggregate channel probability time series to region level by averaging."""
-    if sz_prob is None or len(sz_prob.columns) == 0:
-        return pd.DataFrame()
-    
-    # Group channels by region
-    region_prob_dict = {}
-    
-    for ch in sz_prob.columns:
-        # Extract first contact from bipolar channel
-        first_contact = ch.split('-')[0]
-        region = ch_to_region.get(first_contact)
-        
-        if region is None:
-            continue
-        
-        if region not in region_prob_dict:
-            region_prob_dict[region] = []
-        
-        # Append this channel's time series to the region
-        region_prob_dict[region].append(sz_prob[ch].values)
-    
-    if len(region_prob_dict) == 0:
-        return pd.DataFrame()
-    
-    # Average probabilities within each region across channels
-    region_prob_data = {}
-    for region, ch_probs in region_prob_dict.items():
-        region_prob_data[region] = np.mean(ch_probs, axis=0)
-    
-    # Create DataFrame with same index as original
-    sz_prob_region = pd.DataFrame(region_prob_data, index=sz_prob.index)
-    
-    return sz_prob_region
+threshold_agg = 'manuscript'
+thresh_str = f'pretrained_{threshold_agg}'
 
 # Initialize an empty list to collect each row for the final DataFrame
 summary_data = []
@@ -77,23 +55,38 @@ for _, row in pbar:
     
     try:
         # Build file paths with new naming convention
-        patient_path = ospj(prodatapath, patient)
-        
+        patient_path = ospj(prodatapath, 'sz_spread', patient)
+
         # Channel-level spread file
-        spread_ch_file = ospj(patient_path,
-                             f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
-                             f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_ch-spread.pkl')
-        
+        if model_dict['sequence_length'] is not None:
+            spread_ch_file = ospj(patient_path,
+                                f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
+                                f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{threshold_agg}_ch-spread.pkl')
+        else:
+            spread_ch_file = ospj(patient_path,
+                                f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-None_forecast-None_thresh-{threshold_agg}_ch-spread.pkl')
+            
         # Region-level spread file
-        spread_region_file = ospj(patient_path,
-                                 f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
-                                 f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_region-spread.pkl')
-        
+        if model_dict['sequence_length'] is not None:
+            spread_region_file = ospj(patient_path,
+                                     f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
+                                     f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{threshold_agg}_region-spread.pkl')
+        else:
+            spread_region_file = ospj(patient_path,
+                                     f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-None_forecast-None_thresh-{threshold_agg}_region-spread.pkl')
         # Probability file
-        prob_file = ospj(prodatapath, 'sz_prob', patient,
-                        f"{patient}_task-ictal{onset_run}_mdl-{model_dict['model_name']}_seq-{model_dict['sequence_length']}_"
-                        f"{model_dict['metric']}_prob_forecast-{model_dict['forecast_length']}{model_dict['suffix']}.pkl")
-        
+        if model_dict['sequence_length'] is not None:
+            prob_file = ospj(prodatapath, 'sz_prob', patient,
+                            f"{patient}_task-ictal{onset_run}_mdl-{model_dict['model_name']}_seq-{model_dict['sequence_length']}_"
+                            f"{model_dict['metric']}_prob_forecast-{model_dict['forecast_length']}{model_dict['suffix']}.pkl")
+        else:
+            prob_file = ospj(prodatapath, 'sz_prob', patient,
+                            f"{patient}_task-ictal{onset_run}_run-*_mdl-{model_dict['model_name']}_sz_prob.pkl")
+            potential_paths = glob.glob(prob_file)
+            if len(potential_paths) == 0:
+                print(f"No probability file found for {patient} {onset_run}")
+                continue
+            prob_file = potential_paths[0]
         # Check if required files exist
         if not os.path.exists(spread_ch_file):
             print(f"Channel spread file not found for {patient} {onset_run}")
