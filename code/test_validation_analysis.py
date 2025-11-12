@@ -36,11 +36,12 @@ if dynasd_root not in sys.path:
 # Import models
 from DynaSD.LiNDDA import LiNDDA
 from DynaSD.GIN import GIN
+from DynaSD.NDD import NDD
 from DynaSD.HFER import HFER
 from DynaSD.ABSSLP import ABSSLP
 from DynaSD.IMPRINT import IMPRINT
 from DynaSD.WAVENET import WVNT
-
+from DynaSD.ONCET import ONCET
 from config import Config
 
 # Get paths from config 
@@ -616,7 +617,7 @@ def generate_example_figure(sz_prob, prob_chs, onset_idx, all_chs,
         
         ax.set_ylabel('Agreement ($\phi$)')
         ax.set_xlabel('Threshold')
-        ax.set_ylim([-0.2, 1.1])
+        # ax.set_ylim([-0.2, 1.1])
         ax.set_xlim([np.min(unique_probs), 1])
         sns.despine()
         
@@ -643,10 +644,11 @@ def main():
     # Load learned thresholds   
     ndd_thresholds = {}
     benchmark_thresholds = {}
+    thresholds_type = 'mean'
     
     for metric in ['phi', 'f1', 'iou']:
         try:
-            ndd_thresh_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{metric}_v3_median.csv"))
+            ndd_thresh_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{metric}_v3.csv"))
             ndd_thresholds[metric] = dict(zip(ndd_thresh_df.model, ndd_thresh_df[f'{metric}_threshold']))
         except:
             print(f"Warning: Could not load ndd_val_thresholds_{metric}_v3.csv")
@@ -666,13 +668,16 @@ def main():
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 5, 'forecast_length': 4, 'metric': 'mse', 'suffix': ''},
         # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 9, 'forecast_length': 6, 'metric': 'mse', 'suffix': ''},
         {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 1, 'metric': 'mse', 'suffix': MODEL_VERSION},
+        # {'model': ONCET, 'model_name': 'ONCET', 'suffix': ''},
+        # {'model': NDD, 'model_name': 'NDD', 'sequence_length': 12, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
     ]
     
     benchmark_models = [
         {'model': ABSSLP, 'model_name': 'ABSSLP', 'suffix': ''},
         {'model': IMPRINT, 'model_name': 'IMPRINT', 'suffix': ''}, 
-        {'model': WVNT, 'model_name': 'WVNT', 'suffix': ''}, 
-        {'model': HFER, 'model_name': 'HFER', 'suffix': ''}
+        {'model': WVNT, 'model_name': 'WVNT', 'suffix': ''},
+        {'model': HFER, 'model_name': 'HFER', 'suffix': ''},
+        {'model': ONCET, 'model_name': 'ONCET', 'suffix': ''}
     ]
 
     # Results storage
@@ -864,7 +869,8 @@ def main():
     if results:
         # Save full results as pickle (includes probability dataframes)
         results_df_full = pd.DataFrame(results)
-        pickle_path = ospj(prodatapath, "test_validation_results_nopass_nolayernorm.pkl")
+        # pickle_path = ospj(prodatapath, "test_validation_results_nopass_nolayernorm_v3_mean_thresholds.pkl")
+        pickle_path = ospj(prodatapath, "test_validation_results_ONCET_v1.pkl")
         results_df_full.to_pickle(pickle_path)
         print(f"Full results (with probability data) saved to {pickle_path}")
         
@@ -878,7 +884,8 @@ def main():
             results_csv.append(result_csv)
         
         results_df_csv = pd.DataFrame(results_csv)
-        csv_path = ospj(prodatapath, "test_validation_results_v2.csv")
+        # csv_path = ospj(prodatapath, "test_validation_results_v3_mean_thresholds.csv")
+        csv_path = ospj(prodatapath, "test_validation_results_ONCET_v1.csv")
         results_df_csv.to_csv(csv_path, index=False)
         print(f"CSV results (without probability data) saved to {csv_path}")
         

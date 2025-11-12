@@ -9,7 +9,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-
+import scipy as sc
 # Utility imports
 from utils import clean_labels
 
@@ -91,7 +91,9 @@ def main():
     # Load seizure metadata
     seizures_df = pd.read_csv(ospj(metapath, "metadata_v7_BIDS.csv"))
     seizures_df = seizures_df[seizures_df.split == 1]
-    
+    seizures_df[['notes','source']] = seizures_df[['notes','source']].fillna('')
+    seizures_df = seizures_df[seizures_df.notes.apply(lambda x: 'nina' not in x.lower())]
+    seizures_df = seizures_df[seizures_df.source.apply(lambda x: 'nina' not in x.lower())]
     # Model configurations matching annotation script
     # all_models = [
     #     {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'suffix': ''},
@@ -110,6 +112,7 @@ def main():
     all_models = [
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'suffix': ''},
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 3, 'forecast_length': 2, 'suffix': ''},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 4, 'forecast_length': 3, 'suffix': ''},
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 5, 'forecast_length': 4, 'suffix': ''},
         # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 2, 'forecast_length': 1, 'suffix': ''},
         # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 4, 'forecast_length': 1, 'suffix': ''},
@@ -226,10 +229,10 @@ def main():
                             onset_idx = int(np.argmin(np.abs(prob_times))) 
                             onset_odx = int(np.argmin(np.abs(prob_times - 3)))  # Changed from 1 to 3 seconds to match annotation script
                             onset_mask = np.array([ch.split('-')[0] in onset_labels for ch in prob_df.columns])
-                            
+
                             # Calculate onset metrics
-                            onset_idx += spread_df.iloc[0].values[0]
-                            onset_odx += spread_df.iloc[0].values[0]
+                            onset_idx += int(spread_df.iloc[0].values[0])
+                            onset_odx += int(spread_df.iloc[0].values[0])
                             onset_pred = sz_clf.iloc[onset_idx:onset_odx,:].sum()>0
                             sensitivity = np.sum(onset_mask & onset_pred) / np.sum(onset_mask)
                             specificity = np.sum(~onset_mask & ~onset_pred) / np.sum(~onset_mask)
@@ -237,7 +240,7 @@ def main():
                             recall = recall_score(onset_mask, onset_pred, zero_division=0)
                             f1 = f1_score(onset_mask, onset_pred)
                             phi = matthews_corrcoef(onset_mask, onset_pred)
-                            
+
                             # Calculate recruitment times from indices
                             recruitment_indices = spread_df.iloc[0].values  # First row contains indices
                             recruitment_times = prob_times[recruitment_indices.astype(int)]
@@ -344,16 +347,20 @@ def main():
                                 }
                         
                         first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
-                        sz_prob = prob_data.iloc[first_onset_idx:,:]
-                        
+                        offset_idx = int(np.argmin(np.abs(prob_times - (prob_times.max() - 120))))
+                        sz_prob = prob_data.iloc[first_onset_idx:offset_idx,:]
+                        sz_prob = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=0,origin=0),columns=sz_prob.columns)
                         # Calculate AUC before spread detection (so we have it even if spread fails)
                         onset_idx_auc = int(np.argmin(np.abs(prob_times))) 
                         onset_odx_auc = int(np.argmin(np.abs(prob_times - 3)))
+
                         onset_mask = np.array([ch.split('-')[0] in onset_labels for ch in sz_prob.columns])
                         auc = roc_auc_score(onset_mask, sz_prob.iloc[onset_idx_auc:onset_odx_auc,:].mean()) if sum(onset_mask) > 0 else np.nan
                         
                         # if 'z' in key:
                         spread_df, sz_clf = model.get_onset_and_spread(sz_prob, threshold=threshold, ret_smooth_mat=True)
+
+                        spread_df.fillna(offset_idx - first_onset_idx,inplace=True)
                         if spread_df is not None and not spread_df.empty:
                             result_dict = get_results_dict(sz_prob,spread_df,sz_clf, prob_times, onset_labels, onset_run, model_class, metric, sequence_length, forecast_length, auc, is_tau = False)
                             result_dict['threshold'] = threshold
@@ -439,7 +446,7 @@ def main():
         # Save results for this FILE_KEY
         if spread_results:
             results_df = pd.DataFrame(spread_results)
-            output_path = ospj(prodatapath, f"ndd_spread_analysis_results_{FILE_KEY}_v3.csv")
+            output_path = ospj(prodatapath, f"ndd_spread_analysis_results_{FILE_KEY}_v5.csv")
             results_df.to_csv(output_path, index=False)
             print(f"Results saved to {output_path}")
         else:

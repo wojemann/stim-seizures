@@ -22,21 +22,21 @@ datapath, prodatapath, figpath, metapath = Config.deal(['datapath', 'prodatapath
 #     'suffix': '',
 #     'metric': 'mse'
 # }
-# model_dict = {
-#     'model_name': 'LiNDDA', 
-#     'sequence_length': 5, 
-#     'forecast_length': 4, 
-#     'suffix': '',
-#     'metric': 'mse'
-# }
 model_dict = {
-    'model_name': 'WVNT',
-    'sequence_length': None,
-    'forecast_length': None,
+    'model_name': 'LiNDDA', 
+    'sequence_length': 5, 
+    'forecast_length': 4, 
     'suffix': '',
-    'metric': 'prob'
+    'metric': 'mse'
 }
-threshold_agg = 'manuscript'
+# model_dict = {
+#     'model_name': 'WVNT',
+#     'sequence_length': None,
+#     'forecast_length': None,
+#     'suffix': '',
+#     'metric': 'prob'
+# }
+threshold_agg = 'median'
 thresh_str = f'pretrained_{threshold_agg}'
 
 # Initialize an empty list to collect each row for the final DataFrame
@@ -74,6 +74,22 @@ for _, row in pbar:
         else:
             spread_region_file = ospj(patient_path,
                                      f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-None_forecast-None_thresh-{threshold_agg}_region-spread.pkl')
+        # Channel-level spread instance file
+        if model_dict['sequence_length'] is not None:
+            spread_ch_inst_file = ospj(patient_path,
+                                     f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
+                                     f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{threshold_agg}_ch-spread-inst.pkl')
+        else:
+            spread_ch_inst_file = ospj(patient_path,
+                                     f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-None_forecast-None_thresh-{threshold_agg}_ch-spread-inst.pkl')
+        # Region-level spread instance file
+        if model_dict['sequence_length'] is not None:
+            spread_region_inst_file = ospj(patient_path,
+                                     f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
+                                     f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{threshold_agg}_region-spread-inst.pkl')
+        else:
+            spread_region_inst_file = ospj(patient_path,
+                                     f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-None_forecast-None_thresh-{threshold_agg}_region-spread-inst.pkl')
         # Probability file
         if model_dict['sequence_length'] is not None:
             prob_file = ospj(prodatapath, 'sz_prob', patient,
@@ -97,9 +113,24 @@ for _, row in pbar:
             continue
         
         # Load channel-level spread
-        spread_ch_df = pd.read_pickle(spread_ch_file)
-        seizing_times_ch = spread_ch_df.iloc[1, :].copy()
-        seizing_times_ch -= np.min(seizing_times_ch)
+        spread_ch_df = pd.read_pickle(spread_ch_file) # DF with spread time and index for each channel
+        if spread_ch_df.isna().any().all():
+            print(f"No spread detected for {patient} {onset_run}")
+            continue
+        min_seizing_idx = int(np.min(spread_ch_df.iloc[0,:]))
+        min_seizing_time = np.min(spread_ch_df.iloc[1, :])
+        spread_ch_df.iloc[1,:] -= min_seizing_time
+        seizing_times_ch = spread_ch_df.iloc[1, :]
+        
+        # Fill nan values
+        if np.isnan(seizing_times_ch).sum() > 0:
+            print('check')
+        seizing_times_ch[np.isnan(seizing_times_ch)] = np.inf
+        
+        # Load channel-level spread instance
+        spread_ch_inst_df = pd.read_pickle(spread_ch_inst_file)
+        spread_ch_inst_df = spread_ch_inst_df[min_seizing_time:]
+        spread_ch_inst_df.index -= min_seizing_time
         
         # Identify onset and spread channels
         onset_channels = seizing_times_ch[seizing_times_ch < 3].index.tolist()
@@ -111,7 +142,7 @@ for _, row in pbar:
         all_sz_channels = prob_matrix.columns.tolist()
         
         # Calculate onset index from spread data
-        onset_offset = int(np.min(spread_ch_df.iloc[0, :]))
+        onset_offset = min_seizing_idx
         
         # Calculate channel-level NDD metrics at different time windows
         onset_ndd_cum_list = []
@@ -137,17 +168,19 @@ for _, row in pbar:
         
         # Calculate spread ranks for channels
         spread_rank_ch = seizing_times_ch.rank(method='min')
-        spread_rank_ch = spread_rank_ch.reindex(all_sz_channels).fillna(len(seizing_times_ch) + 1).astype(int)
+        spread_rank_ch_nonan = spread_rank_ch.reindex(all_sz_channels).fillna(len(seizing_times_ch) + 1).astype(int)
         
         # Calculate percent channels seizing over time
         start = 0
-        end = 60
+        end = 90
         interval = 0.5
         num_points = int((end - start) / interval) + 1
         time_points = np.linspace(start, end, num_points)
-        fraction_seizing_ch = np.array([np.sum(seizing_times_ch <= t) / len(all_sz_channels) for t in time_points])
+        fraction_seizing_ch = np.array([np.sum(seizing_times_ch <= t) / len(all_sz_channels)  for t in time_points])
         abs_seizing_ch = np.array([np.sum(seizing_times_ch <= t) for t in time_points])
-        
+        inst_abs_seizing_ch = np.array([spread_ch_inst_df[t] if t in spread_ch_inst_df.index else 0 for t in time_points])
+        inst_fraction_seizing_ch = np.array([spread_ch_inst_df[t]/ len(all_sz_channels) if t in spread_ch_inst_df.index else 0 for t in time_points])
+
         # Initialize region variables
         onset_regions = []
         spread_regions = []
@@ -166,18 +199,27 @@ for _, row in pbar:
             # Load region-level spread
             spread_region_df = pd.read_pickle(spread_region_file)
             
-            if len(spread_region_df.columns) > 0:
-                seizing_times_region = spread_region_df.iloc[1, :].copy()
-                seizing_times_region -= np.min(seizing_times_region)
+            if (len(spread_region_df.columns) > 0) and (not spread_region_df.isna().any().all()):
+                # Load channel-level spread
+                min_seizing_idx = int(np.min(spread_region_df.iloc[0,:]))
+                min_seizing_time = np.min(spread_region_df.iloc[1, :])
+                spread_region_df.iloc[1,:] -= min_seizing_time
+                seizing_times_region = spread_region_df.iloc[1, :]
                 
                 # Identify onset and spread regions
                 onset_regions = seizing_times_region[seizing_times_region < 3].index.tolist()
                 spread_regions = seizing_times_region[seizing_times_region < 10].index.tolist()
                 
+                # Load region-level spread instance
+                spread_region_inst_df = pd.read_pickle(spread_region_inst_file)
+                spread_region_inst_df = spread_region_inst_df[min_seizing_time:]
+                spread_region_inst_df.index -= min_seizing_time
+                
                 # Aggregate probability matrix to regions
                 prob_matrix_region = aggregate_prob_to_regions(prob_matrix, ch_to_region)
-                all_regions = prob_matrix_region.columns.tolist()
-                
+                all_regions = set(ch_to_region.values())
+                onset_offset = min_seizing_idx
+
                 # Calculate region-level NDD metrics
                 for win in time_windows:
                     end_idx = onset_offset + (win * 2)
@@ -201,14 +243,18 @@ for _, row in pbar:
                 region_spread_time = spread_region_df.iloc[1, :].to_dict()
                 
                 # Calculate percent regions seizing over time
-                fraction_seizing_region = np.array([np.sum(seizing_times_region <= t) / len(all_regions) for t in time_points])
-                abs_seizing_region = np.array([np.sum(seizing_times_region <= t) for t in time_points])
-        
+                fraction_seizing_region = np.array([np.sum(seizing_times_region <= t) / len(all_regions)  for t in time_points])
+                abs_seizing_region = np.array([np.sum(seizing_times_region <= t)  for t in time_points])
+                inst_abs_seizing_region = np.array([spread_region_inst_df[t] if t in spread_region_inst_df.index else 0 for t in time_points])
+                inst_fraction_seizing_region = np.array([spread_region_inst_df[t]/ len(all_regions) if t in spread_region_inst_df.index else 0 for t in time_points])
+            else:
+                print(f"No region-level spread detected for {patient} {onset_run}")
         # Append data to the summary list
         summary_data.append({
             # Basic info
             'patient': patient,
             'onset': float(onset_run),
+            'max_time': max(prob_times) - 120 - 180,
             
             # Channel-level data
             'onset_channels': onset_channels,
@@ -217,6 +263,8 @@ for _, row in pbar:
             'channel_spread_time': spread_ch_df.iloc[1, :].to_dict(),
             'fraction_seizing_ch': fraction_seizing_ch,
             'abs_seizing_ch': abs_seizing_ch,
+            'inst_abs_seizing_ch': inst_abs_seizing_ch,
+            'inst_fraction_seizing_ch': inst_fraction_seizing_ch,
             'all_channels': all_sz_channels,
             'onset_ndd_cum_ch': onset_ndd_cum_list,
             'onset_ndd_ind_ch': onset_ndd_ind_list,
@@ -228,6 +276,8 @@ for _, row in pbar:
             'region_spread_time': region_spread_time,
             'fraction_seizing_region': fraction_seizing_region,
             'abs_seizing_region': abs_seizing_region,
+            'inst_abs_seizing_region': inst_abs_seizing_region,
+            'inst_fraction_seizing_region': inst_fraction_seizing_region,
             'all_regions': all_regions,
             'onset_ndd_cum_region': onset_ndd_cum_list_region,
             'onset_ndd_ind_region': onset_ndd_ind_list_region,

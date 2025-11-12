@@ -5,6 +5,7 @@ from os.path import exists as ospe
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy as sc
 import glob
 from tqdm import tqdm
 
@@ -51,14 +52,14 @@ def plot_seizure_spread(sz_prob, sz_spread, onset_idx, offset_idx, threshold,
     """
     if len(sz_spread.columns) == 0:
         return
-    
+    plot_mat = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob.copy(), 20, axis=0), columns=sz_prob.columns)
     plt_offset = 20
     plt.figure(figsize=(10, 6))
-    plt.matshow(sz_prob.loc[onset_idx-plt_offset:offset_idx+plt_offset, sz_spread.columns].T,
+    plt.matshow(plot_mat.loc[onset_idx-plt_offset:offset_idx+plt_offset, sz_spread.columns].T,
                 cmap='magma',
                 interpolation='none',
                 fignum=0)
-    plt.clim([np.min(sz_prob.values), threshold])
+    plt.clim([np.min(plot_mat.values), threshold])
     plt.plot(sz_spread.iloc[0, :] + plt_offset, np.arange(sz_spread.shape[1]), 
              color='black', linewidth=3, label='Spread onset')
     plt.xticks([])
@@ -73,6 +74,7 @@ def plot_seizure_spread(sz_prob, sz_spread, onset_idx, offset_idx, threshold,
 
 
 thresh_str = 'pretrained'
+threshold_agg = 'median'
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 seizure_df = pd.read_csv(ospj(metapath, 'metadata_v7_BIDS.csv'))
 seizure_df = seizure_df[seizure_df.stim == 0]
@@ -85,22 +87,22 @@ seizure_df = seizure_df[seizure_df.stim == 0]
 #     'suffix': '',
 #     'metric': 'mse'
 # }
-# model_dict = {
-#     'model': LiNDDA, 
-#     'model_name': 'LiNDDA', 
-#     'sequence_length': 5, 
-#     'forecast_length': 4, 
-#     'suffix': '',
-#     'metric': 'mse'
-# }
 model_dict = {
-    'model': WVNT,
-    'model_name': 'WVNT',
-    'sequence_length': None,
-    'forecast_length': None,
+    'model': LiNDDA, 
+    'model_name': 'LiNDDA', 
+    'sequence_length': 5, 
+    'forecast_length': 4, 
     'suffix': '',
     'metric': 'mse'
 }
+# model_dict = {
+#     'model': WVNT,
+#     'model_name': 'WVNT',
+#     'sequence_length': None,
+#     'forecast_length': None,
+#     'suffix': '',
+#     'metric': 'mse'
+# }
 
 # Process each patient/seizure
 pbar = tqdm(seizure_df.iterrows(), total=len(seizure_df))
@@ -132,7 +134,7 @@ for _,row in pbar:
         sz_prob_times = sz_prob.pop('time').values  # Convert to numpy array for indexing
         
         # Initialize model and get threshold
-        threshold_agg = 'manuscript'
+
         if model_dict['sequence_length'] is not None:
             model = model_dict['model'](fs=256, w_size=1, w_stride=0.5, 
                                             sequence_length=model_dict['sequence_length'],
@@ -143,15 +145,16 @@ for _,row in pbar:
         threshold = model.get_threshold(sz_prob, method='pretrained', threshold_agg=threshold_agg)
         # Get channel-level spread
         initial_onset_idx = int(np.argmin(np.abs(sz_prob_times - 180)))
-        sz_spread_ch, sz_clf = model.get_onset_and_spread(sz_prob.iloc[initial_onset_idx:,:], threshold=threshold, 
+        offset_idx = int(np.argmin(np.abs(sz_prob_times - (sz_prob_times.max() - 120))))
+        sz_spread_ch, sz_clf = model.get_onset_and_spread(sz_prob.iloc[initial_onset_idx:offset_idx,:], threshold=threshold, 
                                                    filter_w=10, rwin_size=5, rwin_req=4, ret_smooth_mat=True)
         
-        if sz_spread_ch is None or len(sz_spread_ch.columns) == 0:
+        if sz_spread_ch.isna().any().all() or len(sz_spread_ch.columns) == 0:
             print(f"No spread detected for {patient} {onset_run}")
             continue
         
         # Convert indices to times
-        sz_spread_ch.loc[1, :] = sz_prob_times[sz_spread_ch.iloc[0, :].to_numpy().astype(int)]
+        sz_spread_ch.loc[1, ~sz_spread_ch.isna().values[0]] = sz_prob_times[sz_spread_ch.loc[0, ~sz_spread_ch.isna().values[0]].values.astype(int)]
         
         # Save channel-level spread
         save_path_ch = ospj(prodatapath, 'sz_spread', patient, 
@@ -160,27 +163,34 @@ for _,row in pbar:
         os.makedirs(ospj(prodatapath, 'sz_spread', patient), exist_ok=True)
         sz_spread_ch.to_pickle(save_path_ch)
         
+        # Calculate number of channels recruited at each time point
+        sz_spread_ch_inst = sz_clf.sum(axis=1)
+        sz_spread_ch_inst.index = sz_prob_times[initial_onset_idx:offset_idx] - 180
+        save_path_ch_inst = ospj(prodatapath, 'sz_spread', patient, f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
+                                 f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{model.threshold_agg}_ch-spread-inst.pkl')
+        sz_spread_ch_inst.to_pickle(save_path_ch_inst)
+        
         # Calculate onset and offset indices for plotting
         onset_idx = int(sz_spread_ch.iloc[0, :].min()) + initial_onset_idx
-        offset_idx = int(np.argmin(np.abs(sz_prob_times - (np.max(sz_prob_times) - 120))))
         
         # Plot channel-level spread
-        plot_seizure_spread(sz_prob, sz_spread_ch, onset_idx, offset_idx, threshold,
-                          figpath, patient, onset_run, thresh_str, level='channel')
+        plot_seizure_spread(sz_prob, sz_spread_ch, initial_onset_idx, offset_idx, threshold,
+                          figpath, patient, onset_run, f'{thresh_str}_{threshold_agg}', level='channel')
         
         # Load electrode localizations for region mapping
         ch_to_region = load_electrode_localizations(patient, prodatapath)
         
         if ch_to_region is not None:
             # Aggregate probability matrix to regions
-            sz_prob_region = aggregate_prob_to_regions(sz_prob, ch_to_region)
+            sz_prob_region_agg = aggregate_prob_to_regions(sz_prob, ch_to_region)
+            sz_prob_region = sz_prob_region_agg.iloc[initial_onset_idx:offset_idx,:].copy()
             
             if len(sz_prob_region.columns) > 0:
                 # Get region-level spread by running detection on aggregated probabilities
-                sz_spread_region = model.get_onset_and_spread(sz_prob_region, threshold=threshold,
-                                                              filter_w=10, rwin_size=5, rwin_req=4)
+                sz_spread_region,sz_clf_region = model.get_onset_and_spread(sz_prob_region, threshold=threshold,
+                                                              filter_w=10, rwin_size=5, rwin_req=4, ret_smooth_mat=True)
                 
-                if sz_spread_region is not None and len(sz_spread_region.columns) > 0:
+                if not sz_spread_region.isna().any().all() and len(sz_spread_region.columns) > 0:
                     # Convert indices to times
                     sz_spread_region.loc[1, :] = sz_prob_times[sz_spread_region.iloc[0, :].to_numpy().astype(int)]
                     
@@ -189,10 +199,17 @@ for _,row in pbar:
                                            f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
                                            f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{model.threshold_agg}_region-spread.pkl')
                     sz_spread_region.to_pickle(save_path_region)
+                    sz_spread_region_inst = sz_clf_region.sum(axis=1)
+                    sz_spread_region_inst.index = sz_prob_times[initial_onset_idx:offset_idx] - 180
+                    save_path_region_inst = ospj(prodatapath, 'sz_spread', patient, f'seizure-{onset_run}_mdl-{model_dict["model_name"]}_seq-{model_dict["sequence_length"]}_'
+                                 f'forecast-{model_dict["forecast_length"]}{model_dict["suffix"]}_thresh-{model.threshold_agg}_region-spread-inst.pkl')
+                    sz_spread_region_inst.to_pickle(save_path_region_inst)
                     
+                    onset_idx_region = int(sz_spread_region.iloc[0, :].min()) + initial_onset_idx
+
                     # Plot region-level spread
-                    plot_seizure_spread(sz_prob_region, sz_spread_region, onset_idx, offset_idx, 
-                                      threshold, figpath, patient, onset_run, thresh_str, level='region')
+                    plot_seizure_spread(sz_prob_region_agg, sz_spread_region, initial_onset_idx, offset_idx, 
+                                      threshold, figpath, patient, onset_run, f'{thresh_str}_{threshold_agg}', level='region')
                 else:
                     print(f"No region spread detected for {patient} {onset_run}")
             else:

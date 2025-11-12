@@ -102,6 +102,7 @@ def load_benchmark_probability_files(patient, onset_run, model_names):
 
 def apply_smoothing(prob_array, window_size=20):
     """Apply temporal smoothing to probability matrix"""
+    # return sc.ndimage.uniform_filter1d(prob_array, size=window_size, mode='nearest', axis=1, origin=0)
     return sc.ndimage.uniform_filter1d(prob_array, size=window_size, mode='nearest', axis=1, origin=0)
 
 

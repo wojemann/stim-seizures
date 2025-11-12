@@ -3,6 +3,7 @@ import sys
 import os
 import glob
 from os.path import join as ospj
+import time
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow INFO/WARN messages
 os.environ['TF_TRT_DISABLED'] = '1'       # Silence TF-TRT warnings if TensorRT not installed
@@ -10,6 +11,7 @@ os.environ['TF_TRT_DISABLED'] = '1'       # Silence TF-TRT warnings if TensorRT 
 # Scientific imports
 import numpy as np
 import pandas as pd
+import scipy as sc
 from tqdm import tqdm
 from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
 
@@ -29,7 +31,7 @@ dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
 if dynasd_root not in sys.path:
     sys.path.insert(0, dynasd_root)
 
-from DynaSD import ABSSLP, IMPRINT, WVNT, HFER, LiNDDA, GIN
+from DynaSD import LiNDDA, GIN, NDD, MINDD
 from config import Config
 
 # Get paths from config 
@@ -40,7 +42,7 @@ datapath,prodatapath,figpath,metapath = Config.deal(['datapath','prodatapath','f
 plt.rcParams['image.cmap'] = 'magma'
 
 # Global configuration
-OVERWRITE = False  # Whether to overwrite existing probability matrix files
+OVERWRITE = True  # Whether to overwrite existing probability matrix files
 MODEL_VERSION = 'nopass_nolayernorm'  # Version suffix for probability files (use '' for default, '_v2' for new hyperparameters, etc.)
 
 def find_optimal_f1_threshold(y_true, y_scores):
@@ -238,6 +240,10 @@ def run_model_task(params: tuple) -> list:
                                 sequence=sequence_length,
                                 forecast=forecast_length,
                                 auc=auc,
+                                # Timing metrics (NaN when loading from disk)
+                                fit_time=np.nan,
+                                inference_time=np.nan,
+                                total_inference_time=np.nan,
                                 # IoU-optimized metrics
                                 iou_threshold=iou_threshold,
                                 iou_f1=iou_f1,
@@ -274,6 +280,10 @@ def run_model_task(params: tuple) -> list:
                                 sequence=sequence_length,
                                 forecast=forecast_length,
                                 auc=np.nan,
+                                # Timing metrics (NaN when loading from disk)
+                                fit_time=np.nan,
+                                inference_time=np.nan,
+                                total_inference_time=np.nan,
                                 # IoU-optimized metrics
                                 iou_threshold=np.nan,
                                 iou_f1=np.nan,
@@ -338,7 +348,7 @@ def run_model_task(params: tuple) -> list:
                 seizure,
                 fs_raw,
                 montage,
-                target=fs_raw,
+                target=128,
                 wavenet=False,
                 pre_mask=channel_mask,
             )
@@ -350,12 +360,15 @@ def run_model_task(params: tuple) -> list:
                 return []
             onset_mask = [ch.split('-')[0] in onset_labels for ch in seizure_nart.columns]
             
-            batch_size = 2048
+            batch_size = 512
             val_split = 0.1
             early_stopping = True
-            patience = 1
+            patience = 2
             verbose = False
 
+            # Start timing model fitting
+            fit_start_time = time.time()
+            
             if model_class == LiNDDA:
                 model = model_class(
                     fs = fs,
@@ -363,12 +376,12 @@ def run_model_task(params: tuple) -> list:
                     w_stride = 0.5,
                     sequence_length = sequence_length,
                     forecast_length = forecast_length,
-                    closeform = True,
+                    closeform = False,
                     val_split = val_split,
                     patience = patience,
                     lr = 0.01,
                     early_stopping = early_stopping,
-                    num_epochs = 100,
+                    num_epochs = 50,
                     batch_size = batch_size,
                     verbose = verbose,
                 )
@@ -388,17 +401,56 @@ def run_model_task(params: tuple) -> list:
                 val_split = val_split,
                 patience = patience,
                 lr = 0.01,
-                hidden_size=10 if sequence_length == 12 else seizure_nart.shape[1],
+                hidden_size= seizure_nart.shape[1]//2,
                 num_layers=1,
                 num_stacks=1,
-                num_epochs = 10 if sequence_length == 12 else 100,
+                num_epochs = 100,
                 verbose=verbose,
                 use_cuda=True,
-                early_stopping = False if sequence_length == 12 else early_stopping
+                early_stopping = early_stopping
                 )
                 model.fit(seizure_nart.iloc[:120*fs,:])
+            elif model_class == NDD:
+                model = model_class(
+                fs=fs,
+                w_size=1,
+                w_stride=0.5,
+                sequence_length = sequence_length,
+                forecast_length = forecast_length,
+                batch_size = 'full',
+                val_split = val_split,
+                patience = patience,
+                lr = 0.01,
+                hidden_size=10,
+                num_layers=1,
+                num_epochs = 10,
+                verbose=verbose,
+                use_cuda=True,
+                early_stopping = False
+                )
+                model.fit(seizure_nart.iloc[60*fs:120*fs,:])
+            elif model_class == MINDD:
+                model = model_class(
+                fs=fs,
+                w_size=1,
+                w_stride=0.5,
+                sequence_length = sequence_length,
+                forecast_length = forecast_length,
+                batch_size = batch_size,
+                val_split = val_split,
+                lr = 0.01,
+                hidden_sizes = (np.array([2,0.8])*seizure_nart.shape[1]).astype(int),
+                num_epochs = 50,
+                verbose=verbose,
+                use_cuda=True,
+                early_stopping = False
+                )
+                model.fit(seizure_nart.iloc[:120*fs,:])            
             else:
                 raise ValueError(f"Model {model_class} not supported")
+            
+            # End timing model fitting
+            fit_time = time.time() - fit_start_time
 
             
             
@@ -411,10 +463,16 @@ def run_model_task(params: tuple) -> list:
             
             out_path = ospj(out_dir, f"{patient}_task-ictal{onset_run}_mdl-{model_name}_seq-{sequence_length}_sz_prob_forecast-{forecast_length}{version_suffix}.pkl")
             
+            # Start timing inference (probability matrix generation)
+            inference_start_time = time.time()
             mse_prob = model(seizure_nart)
             mse_zs_prob = model.mse_z_df
             mse_z_prob = model.mse_z_df.abs()
             sz_prob_times = model.get_win_times(len(seizure_nart))
+            inference_time = time.time() - inference_start_time
+            
+            # Total inference time (fitting + probability generation)
+            total_inference_time = fit_time + inference_time
             # sz_prob_df = pd.concat((sz_prob,pd.Series(sz_prob_times,name='time')),axis=1)
             mse_prob_df = pd.concat((mse_prob,pd.Series(sz_prob_times,name='time')),axis=1)
             mse_z_prob_df = pd.concat((mse_z_prob,pd.Series(sz_prob_times,name='time')),axis=1)
@@ -427,25 +485,31 @@ def run_model_task(params: tuple) -> list:
             onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
             onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
             # onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
-            onset_mse = mse_prob.iloc[onset_idx:onset_odx,:].mean()
-            onset_mse_z = mse_z_prob.iloc[onset_idx:onset_odx,:].mean()
-            onset_mse_zs = mse_zs_prob.iloc[onset_idx:onset_odx,:].mean()
-            for df,metric in zip([onset_mse,onset_mse_z,onset_mse_zs],['mse','mse_z','mse_zs']):
+
+            # onset_mse = mse_prob.iloc[onset_idx:onset_odx,:].mean()
+            # onset_mse_z = mse_z_prob.iloc[onset_idx:onset_odx,:].mean()
+            # onset_mse_zs = mse_zs_prob.iloc[onset_idx:onset_odx,:].mean()
+            for df,metric in zip([mse_prob,mse_z_prob,mse_zs_prob],['mse','mse_z','mse_zs']):
                 if len(np.unique(onset_mask)) == 2:
                     # IoU-optimized threshold metrics
-                    iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, df)
+                    
+                    df = pd.DataFrame(sc.ndimage.uniform_filter1d(df,size=20,axis=0),columns=seizure_nart.columns)
+
+                    onset_prob = df.iloc[onset_idx:onset_odx,:].mean()
+                    
+                    iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
                     # Calculate additional IoU metrics (precision, recall)
-                    iou_pred = df > iou_threshold
+                    iou_pred = onset_prob > iou_threshold
                     iou_precision = precision_score(onset_mask, iou_pred)
                     iou_recall = recall_score(onset_mask, iou_pred)
                     
                     # F1-optimized threshold metrics
-                    f1_threshold = find_optimal_f1_threshold(onset_mask, df)
-                    f1_metrics = compute_all_metrics(onset_mask, df, f1_threshold)
+                    f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
+                    f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
                     
                     # Phi-optimized threshold metrics
-                    phi_threshold = find_optimal_phi_threshold(onset_mask, df)
-                    phi_metrics = compute_all_metrics(onset_mask, df, phi_threshold)
+                    phi_threshold = find_optimal_phi_threshold(onset_mask, onset_prob)
+                    phi_metrics = compute_all_metrics(onset_mask, onset_prob, phi_threshold)
 
                     results.append(
                         dict(
@@ -456,6 +520,10 @@ def run_model_task(params: tuple) -> list:
                             sequence = sequence_length,
                             forecast=forecast_length,
                             auc=auc,
+                            # Timing metrics
+                            fit_time=fit_time,
+                            inference_time=inference_time,
+                            total_inference_time=total_inference_time,
                             # IoU-optimized metrics
                             iou_threshold=iou_threshold,
                             iou_f1=iou_f1,
@@ -492,6 +560,10 @@ def run_model_task(params: tuple) -> list:
                             sequence = sequence_length,
                             forecast=forecast_length,
                             auc=np.nan,
+                            # Timing metrics
+                            fit_time=fit_time,
+                            inference_time=inference_time,
+                            total_inference_time=total_inference_time,
                             # IoU-optimized metrics
                             iou_threshold=np.nan,
                             iou_f1=np.nan,
@@ -545,29 +617,39 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
-    seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 0)]
+    seizures_df = seizures_df[(seizures_df.split == 1) & (seizures_df.stim == 0)]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
     onset_time = 180          # Seizure onset time in recording (seconds)
     montage = 'bipolar'       # Electrode montage for preprocessing
-    # all_models = [{'model': LiNDDA, 'sequence_length': 1},{'model':GIN,'sequence_length':12}]
-    # all_models = [{'model': LiNDDA, 'sequence_length': 1}]
-    # all_models = [{'model': LiNDDA, 'sequence_length': 32}]
+
     all_models = [
-        # {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
+        
+        # LiNDDA MODELS
+        {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
+        {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
+        {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
+        {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 3},
         {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
-        # {'model': LiNDDA, 'sequence_length': 9, 'forecast_length': 6},
-        # {'model': LiNDDA, 'sequence_length': 32, 'forecast_length': 1},
-        # {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
-        # {'model': GIN, 'sequence_length': 16, 'forecast_length': 1},
-        # {'model': GIN, 'sequence_length': 32, 'forecast_length': 1},
+        {'model': LiNDDA, 'sequence_length': 6, 'forecast_length': 5},
+        {'model': LiNDDA, 'sequence_length': 7, 'forecast_length': 6},
+        {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 7},
+        
+        # GIN MODELS
+        {'model': GIN, 'sequence_length': 4, 'forecast_length': 1},
+        {'model': GIN, 'sequence_length': 8, 'forecast_length': 1},
+        {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
+
+        # NDD Models
+        {'model': NDD, 'sequence_length': 12, 'forecast_length': 1},
+
+        # MINDD MODELS
+        {'model': MINDD, 'sequence_length': 3, 'forecast_length': 2},
+        # {'model': MINDD, 'sequence_length': 4, 'forecast_length': 3},
+        # {'model': MINDD, 'sequence_length': 5, 'forecast_length': 4},
+
     ]
-    # all_models = [
-    #     {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
-    #     {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 1},
-    #     {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 1},
-    # ]
 
 
     # Build all tasks across all patients and seizures (models are handled inside)
@@ -604,8 +686,8 @@ def main():
             flat_results.append(mdl)
 
     result_df = pd.DataFrame(flat_results)
-    # print(result_df)
-    # result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v4.csv"),index=False)
+    print(result_df)
+    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v7.csv"),index=False)
 
 if __name__ == "__main__":
     main()

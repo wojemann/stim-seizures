@@ -1,0 +1,31 @@
+name: stim-env
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy>=2.0
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - scikit-learn
+  - statsmodels
+  - pytorch
+  - torchvision
+  - torchaudio
+  - jupyter
+  - jupyterlab
+  - ipykernel
+  - pip
+  - pip:
+    - pennprov
+    - mne
+    - mne-bids
+    - kneed
+    - pingouin
+    - krippendorff
+    - pqdm
+    - statannot
+

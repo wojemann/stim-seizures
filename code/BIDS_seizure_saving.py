@@ -41,17 +41,20 @@ def main():
 
     # Loading in all seizure data
     # seizures_df = pd.read_csv(ospj(metapath,"validation_metadata","metadata_v6.csv"))
-    seizures_df = pd.read_csv(ospj(metapath,"metadata_v7.csv"))
+    # seizures_df = pd.read_csv(ospj(metapath,"metadata_v7.csv"))
+    seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
 
     # drop HF stim induced seizures
     prebuffer = 180 # seconds before and after seizure to save
     postbuffer = 120 # seconds after seizure to save
-    for pt, group in tqdm(
+    patient_pbar = tqdm(
         seizures_df.groupby('Patient'),
         total=seizures_df.Patient.nunique(),
         desc="Patients",
         position=0,
-    ):
+    )
+    for pt, group in patient_pbar:
+        patient_pbar.set_description(f"Patient: {pt}")
         ieegid = group.groupby('IEEGname').ngroup().astype(int)
         seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
         group.loc[ieegid.index,'IEEGID'] = ieegid
@@ -60,28 +63,27 @@ def main():
         group = group.sort_values(["IEEGID","onset"])
         group.reset_index(inplace=True, drop=True)
         
-        for _, row in tqdm(
-            group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
-        ):
-            if row.stim == 2: # Skip high frequency induced seizures
+        seizure_pbar = tqdm(
+            group.iterrows(), total=group.shape[0], desc="Seizures", position=1, leave=False
+        )
+        for sz_idx, row in seizure_pbar:
+            seizure_pbar.set_description(f"Seizure onset: {int(row.onset)}")
+            if row.stim > 1: # Skip high frequency induced seizures
                 continue
-
+            if pt == 'HUP203':
+                continue
             task_names = ['ictal','stim']
             onset = row.onset
             offset = row.offset
             # get bids path
             sz_clip_bids_path = bids_path.copy().update(
                 subject=pt,
-                run=int(row["IEEGID"]),
+                run=f"{int(row['IEEGID']):02d}",
                 task=f"{task_names[int(row.stim)]}{int(onset)}",
             )
 
             # check if the file already exists, if so, skip
             if sz_clip_bids_path.fpath.exists() and not OVERWRITE:
-                continue
-
-            # CHOP037 has a seizure that's too large
-            if (pt == 'CHOP037') & (onset == 962082.12):
                 continue
 
             # HUP097 does not have an end time, so we'll just use 60 seconds from the start
@@ -91,8 +93,9 @@ def main():
             # get the duration and clip it to 5 mins
             duration = offset-onset
             if duration > 300:
-                print(f"Skipping {pt} {row.IEEGname} {onset} {offset} because duration is {duration} seconds")
-                continue
+                print(f"Clipping {pt} {row.IEEGname} {onset} {offset} because duration is {duration} seconds")
+                # continue
+                offset = onset + 300
 
             data, fs = get_iEEG_data(
                 iEEG_filename=row["IEEGname"],

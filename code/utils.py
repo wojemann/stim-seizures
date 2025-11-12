@@ -40,7 +40,6 @@ import mne_bids
 from mne_bids import BIDSPath, read_raw_bids
 
 # nonstandard imports
-from ieeg.auth import Session
 import pandas as pd
 import numpy as np
 import torch
@@ -100,6 +99,8 @@ def get_iEEG_data(
     start_time_usec = int(start_time_usec)
     stop_time_usec = int(stop_time_usec)
     duration = stop_time_usec - start_time_usec
+    
+    from ieeg.auth import Session
 
     with open(password_bin_file, "r") as f:
         pwd = f.read()
@@ -1248,7 +1249,7 @@ def ar_one(data):
         data_white[:, i] = data[1:, i] - (data[:-1, i]*w[0] + w[1])
     return data_white
 
-def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False, pre_mask = None):
+def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False, pre_mask = None, band = [1, 120], ):
     # This function implements preprocessing steps for seizure detection
     chs = data.columns.to_list()
     ch_df = check_channel_types(chs)
@@ -1282,7 +1283,7 @@ def preprocess_for_detection(data,fs,montage='bipolar',target=256, wavenet=False
     else:
         # Bandpass filtering
         data_bp_notch = notch_filter(data_bp_np,fs)
-        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=1,hi=120)
+        data_bp_filt = bandpass_filter(data_bp_notch,fs,lo=band[0],hi=band[1])
         # Down sampling
         if fs != target:
             signal_len = int(data_bp_filt.shape[1]/fs*target)

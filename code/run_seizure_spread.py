@@ -8,7 +8,7 @@ from os.path import join as ospj
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-
+import scipy as sc
 # Utility imports
 from utils import get_data_from_bids, clean_labels
 
@@ -63,7 +63,9 @@ def main():
     # Load seizure metadata
     seizures_df = pd.read_csv(ospj(metapath, "metadata_v7_BIDS.csv"))
     seizures_df = seizures_df[seizures_df.split == 1]
-    
+    seizures_df[['notes','source']] = seizures_df[['notes','source']].fillna('')
+    # seizures_df = seizures_df[seizures_df.notes.apply(lambda x: 'Nina' not in x.lower())]
+    # seizures_df = seizures_df[seizures_df.source.apply(lambda x: 'Nina' not in x.lower())]
     # Models from annotation script
     model_names = ['ABSSLP', 'IMPRINT', 'WVNT', 'HFER']
     models = [ABSSLP, IMPRINT, WVNT, HFER]
@@ -101,6 +103,9 @@ def main():
                 # Extract time array (do this ONCE before the aggregation loop)
                 if 'time' in prob_data.columns:
                     prob_times = prob_data.pop('time').values
+                    if np.diff(prob_times).mean() < 0.5:
+                        print(f'Warning: Incorrectw window stride for {patient} {onset_run} {model_name}')
+                        continue
                 else:
                     print(f"Warning: No time column found for {patient} {onset_run} {model_name}")
                     continue
@@ -110,27 +115,30 @@ def main():
                         threshold = threshold_dict[model_name]
 
                         if model_name == 'WVNT':
-                            model = model_dict[model_name](fs=128, w_size=1, w_stride = 0.125, 
+                            model = model_dict[model_name](fs=128, w_size=1, w_stride = 0.5, 
                             # model_path = '/mnt/sauce/littlab/users/wojemann/dynasd_data/CHECKPOINTS/WaveNet/v111.hdf5',
                             model_path = '',
                             verbose = False,
                             batch_size = 512)
                         else:
-                            model = model_dict[model_name](w_size=1,w_stride=0.125,fs=256)
+                            model = model_dict[model_name](w_size=1,w_stride=0.5,fs=256)
                         # Call user's function with probability data and threshold
                         onset_mask = np.array([ch.split('-')[0] in onset_labels for ch in prob_data.columns])
                         onset_idx = int(np.argmin(np.abs(prob_times))) 
                         onset_odx = int(np.argmin(np.abs(prob_times - 3)))  # Changed from 1 to 3 seconds to match annotation script 
 
                         first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
-                        sz_prob = prob_data.iloc[first_onset_idx:,:]
-                        spread_df,sz_clf = model.get_onset_and_spread(sz_prob,threshold=threshold,ret_smooth_mat=True)
-                        
+                        offset_idx = int(np.argmin(np.abs(prob_times - (prob_times.max() - 120))))
+                        sz_prob = prob_data.iloc[first_onset_idx:offset_idx,:]
+                        sz_prob = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest', axis=0,origin=0),columns=sz_prob.columns)
+                        spread_df,sz_clf = model.get_onset_and_spread(sz_prob,threshold=threshold,ret_smooth_mat=True,filter_w=10,rwin_size=5,rwin_req=4)
+                        spread_df.fillna(offset_idx - first_onset_idx,inplace=True)
+
                         auc = roc_auc_score(onset_mask, sz_prob.iloc[onset_idx:onset_odx,:].mean()) if sum(onset_mask) > 0 else np.nan
 
                         if spread_df is not None and not spread_df.empty:
-                            onset_idx_adj = onset_idx + spread_df.iloc[0].values[0]
-                            onset_odx_adj = onset_odx + spread_df.iloc[0].values[0]
+                            onset_idx_adj = onset_idx + int(spread_df.iloc[0].values[0])
+                            onset_odx_adj = onset_odx + int(spread_df.iloc[0].values[0])
                             onset_pred = sz_clf.iloc[onset_idx_adj:onset_odx_adj,:].sum()>0
                             
                             sensitivity = np.sum(onset_mask & onset_pred) / np.sum(onset_mask)
@@ -139,6 +147,7 @@ def main():
                             recall = recall_score(onset_mask, onset_pred, zero_division=0)
                             f1 = f1_score(onset_mask, onset_pred)
                             phi = matthews_corrcoef(onset_mask, onset_pred)
+
                             # Calculate recruitment times from indices
                             recruitment_indices = spread_df.iloc[0].values  # First row contains indices
                             recruitment_times = prob_times[recruitment_indices.astype(int)]
@@ -285,7 +294,7 @@ def main():
         # Save results for this KEY
         if spread_results:
             results_df = pd.DataFrame(spread_results)
-            output_path = ospj(prodatapath, f"benchmark_val_analysis_results_{KEY}_v3.csv")
+            output_path = ospj(prodatapath, f"benchmark_val_analysis_results_{KEY}_v5.csv")
             results_df.to_csv(output_path, index=False)
             print(f"Results saved to {output_path}")
         else:

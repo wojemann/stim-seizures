@@ -36,7 +36,7 @@ model_dict = {
     'suffix': '',
     'metric': 'prob'
 }
-threshold_agg = 'manuscript'
+threshold_agg = 'mean'
 thresh_str = f'pretrained_{threshold_agg}'
 
 
@@ -58,7 +58,7 @@ metadata_df['patient'] = metadata_df['Patient']
 metadata_df.drop([col for col in metadata_df.columns if 'Unnamed' in col],axis=1,inplace=True)
 metadata_df['notes'] = metadata_df['notes'].fillna('')
 metadata_df = metadata_df[metadata_df['stim'] == 0]
-metadata_df = metadata_df[metadata_df['notes'].apply(lambda x: 'Nina' not in x)]
+# metadata_df = metadata_df[metadata_df['notes'].apply(lambda x: 'Nina' not in x)]
 metadata_df['onset'] = metadata_df['onset'].astype(int).astype(float)
 summary_df = summary_df.merge(metadata_df,how='inner',on=['patient','onset'])
 
@@ -105,11 +105,15 @@ for patient, group in tqdm(summary_df.groupby('patient'), desc="Analyzing patien
                 rank1_series[channel] = last_rank_value
             if channel not in rank2_series:
                 rank2_series[channel] = last_rank_value
+        rank1_series = rank1_series.fillna(last_rank_value)
+        rank2_series = rank2_series.fillna(last_rank_value)
         
         # Sort to align channels and calculate Spearman correlation
         rank1_series = rank1_series.sort_index()
         rank2_series = rank2_series.sort_index()
         spearman_corr, _ = spearmanr(rank1_series, rank2_series)
+        if np.isnan(spearman_corr):
+            spearman_corr = 0
         spearman_correlations_ch.append(spearman_corr)
 
     avg_spearman_ch = np.mean(spearman_correlations_ch) if spearman_correlations_ch else None

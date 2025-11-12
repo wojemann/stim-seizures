@@ -6,6 +6,9 @@ from os.path import join as ospj
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow INFO/WARN messages
 os.environ['TF_TRT_DISABLED'] = '1'       # Silence TF-TRT warnings if TensorRT not installed
+# Fix matplotlib cache issues on macOS
+os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib-cache'
+os.makedirs('/tmp/matplotlib-cache', exist_ok=True)
 
 # Scientific imports
 import numpy as np
@@ -13,31 +16,20 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
 
-# Plotting imports
+# Plotting imports - fix macOS backend issues
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to prevent stalling
 import matplotlib.pyplot as plt
 
-# Deep learning imports
-from tensorflow.config.experimental import set_memory_growth, list_physical_devices
-import tensorflow as tf
-from absl import logging as absl_logging
-
-# Suppress TensorFlow logging
-absl_logging.set_verbosity(absl_logging.ERROR)
-tf.get_logger().setLevel('ERROR')
-
-# Configure GPU memory growth to prevent allocation issues
-try:
-    for _gpu in list_physical_devices('GPU'):
-        set_memory_growth(_gpu, True)
-except Exception:
-    pass
+# NOTE: TensorFlow import removed - was only used for GPU configuration
+# which is not available on macOS. If you need TensorFlow, fix the installation:
+# pip uninstall -y tensorflow keras
+# pip install tensorflow==2.16.1 keras==3.3.3
 
 # Utility imports
 from utils import preprocess_for_detection, get_data_from_bids, index_of_union_threshold, clean_labels
 
 # Parallel execution
-from pqdm.threads import pqdm
-
 # Get the project root (parent directory of examples/)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
@@ -45,7 +37,7 @@ dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
 if dynasd_root not in sys.path:
     sys.path.insert(0, dynasd_root)
 
-from DynaSD import ABSSLP, IMPRINT, WVNT, HFER
+from DynaSD import ABSSLP, IMPRINT, WVNT, HFER, ONCET
 from config import Config
 
 # Get paths from config 
@@ -481,24 +473,26 @@ def main():
     to detect seizure onset patterns in ictal recordings.
     """
     # Configure GPU memory growth for TensorFlow/PyTorch compatibility
-    gpus = list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
+    # gpus = list_physical_devices('GPU')
+    # if gpus:
+    #     try:
+    #         for gpu in gpus:
+    #             set_memory_growth(gpu, True)
+    #     except RuntimeError as e:
+    #         print(e)
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
-    seizures_df = seizures_df[(seizures_df.split == 0)] # Filter for only seizures that have soft onset labels
+    seizures_df = seizures_df[(seizures_df.stim == 0)]
+    seizures_df = seizures_df[(seizures_df.split == 1)]
+    # seizures_df = seizures_df[(seizures_df.split )] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
     onset_time = 180          # Seizure onset time in recording (seconds)
     montage = 'bipolar'       # Electrode montage for preprocessing
-    # all_models = [ABSSLP,IMPRINT,WVNT,HFER]  # Models to run
-    all_models = [WVNT]
+    all_models = [ABSSLP,IMPRINT,WVNT,HFER]  # Models to run
+    # all_models = [ONCET]
 
     # Build all tasks across all patients and seizures (models are handled inside)
     tasks = []
@@ -524,7 +518,7 @@ def main():
     #     y.append(run_model_task(task))
     # results_nested = pqdm(tasks, run_model_task, n_jobs=12)
     results_nested = []
-    for task in tqdm(tasks, total=len(tasks), desc="Running tasks"):
+    for task in tqdm(tasks,total=len(tasks)):
         results_nested.append(run_model_task(task))
     # Filter out exceptions and flatten list of lists into a single list of dicts
     flat_results = []
