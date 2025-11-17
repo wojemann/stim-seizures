@@ -133,11 +133,16 @@ def get_metrics(onset_mask, onset_prob):
     f1 = f1_score(onset_mask, onset_pred)
     phi = matthews_corrcoef(onset_mask, onset_pred)
     
-    # Calculate AUPRC
+    # Calculate AUPRC (raw and normalized)
     precision, recall, _ = precision_recall_curve(onset_mask, onset_prob)
-    auprc = auc(recall, precision)
+    auprc_raw = auc(recall, precision)
     
-    return optimal_threshold, opt_se, opt_sp, auroc, f1, phi, auprc
+    # Normalized AUPRC: adjusts for class imbalance
+    # Baseline is the prevalence of positive class (random classifier performance)
+    baseline = np.mean(onset_mask)
+    auprc_normalized = (auprc_raw - baseline) / (1 - baseline) if baseline < 1 else np.nan
+    
+    return optimal_threshold, opt_se, opt_sp, auroc, f1, phi, auprc_raw, auprc_normalized
 
 def run_model_task(params: tuple) -> list:
     """
@@ -209,7 +214,7 @@ def run_model_task(params: tuple) -> list:
                     onset_prob = sz_prob_smooth.iloc[onset_idx:onset_odx, :].mean()
                     
                     # IoU-optimized threshold metrics
-                    iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc = get_metrics(onset_mask, onset_prob)
+                    iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc_raw, auprc_normalized = get_metrics(onset_mask, onset_prob)
                     # Calculate additional IoU metrics (precision, recall)
                     iou_pred = onset_prob > iou_threshold
                     iou_precision = precision_score(onset_mask, iou_pred)
@@ -231,7 +236,8 @@ def run_model_task(params: tuple) -> list:
                             stim=stim,
                             model=model_name,
                             auc=auroc,
-                            auprc=auprc,
+                            auprc_raw=auprc_raw,
+                            auprc_normalized=auprc_normalized,
                             # IoU-optimized metrics
                             iou_threshold=iou_threshold,
                             iou_f1=iou_f1,
@@ -267,7 +273,8 @@ def run_model_task(params: tuple) -> list:
                             stim=stim,
                             model=model_name,
                             auc=np.nan,
-                            auprc=np.nan,
+                            auprc_raw=np.nan,
+                            auprc_normalized=np.nan,
                             # IoU-optimized metrics
                             iou_threshold=np.nan,
                             iou_f1=np.nan,
@@ -375,7 +382,7 @@ def run_model_task(params: tuple) -> list:
                 onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
                 
                 # IoU-optimized threshold metrics
-                iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc = get_metrics(onset_mask, onset_prob)
+                iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc_raw, auprc_normalized = get_metrics(onset_mask, onset_prob)
                 # Calculate additional IoU metrics (precision, recall)
                 iou_pred = onset_prob > iou_threshold
                 iou_precision = precision_score(onset_mask, iou_pred)
@@ -397,7 +404,8 @@ def run_model_task(params: tuple) -> list:
                         stim=stim,
                         model=model_name,
                         auc=auroc,
-                        auprc=auprc,
+                        auprc_raw=auprc_raw,
+                        auprc_normalized=auprc_normalized,
                         # IoU-optimized metrics
                         iou_threshold=iou_threshold,
                         iou_f1=iou_f1,
@@ -433,7 +441,8 @@ def run_model_task(params: tuple) -> list:
                         stim=stim,
                         model=model_name,
                         auc=np.nan,
-                        auprc=np.nan,
+                        auprc_raw=np.nan,
+                        auprc_normalized=np.nan,
                         # IoU-optimized metrics
                         iou_threshold=np.nan,
                         iou_f1=np.nan,
