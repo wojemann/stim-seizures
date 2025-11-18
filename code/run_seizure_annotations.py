@@ -49,7 +49,7 @@ datapath,prodatapath,figpath,metapath = Config.deal(['datapath','prodatapath','f
 plt.rcParams['image.cmap'] = 'magma'
 
 # Global configuration
-OVERWRITE = False  # Whether to overwrite existing probability matrix files
+OVERWRITE = True  # Whether to overwrite existing probability matrix files
 
 def find_optimal_f1_threshold(y_true, y_scores):
     """Find threshold that maximizes F1 score."""
@@ -508,7 +508,7 @@ def main():
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
     seizures_df = seizures_df[(seizures_df.stim == 0)]
-    seizures_df = seizures_df[(seizures_df.split == 1)]
+    seizures_df = seizures_df[(seizures_df.split == 2)]
     # seizures_df = seizures_df[(seizures_df.split )] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -555,7 +555,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results_v7_auprc.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results_v7_auprc.csv"),index=False)
     
 if __name__ == "__main__":
     main()

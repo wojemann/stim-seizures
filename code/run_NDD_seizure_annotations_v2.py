@@ -42,7 +42,7 @@ datapath,prodatapath,figpath,metapath = Config.deal(['datapath','prodatapath','f
 plt.rcParams['image.cmap'] = 'magma'
 
 # Global configuration
-OVERWRITE = False  # Whether to overwrite existing probability matrix files
+OVERWRITE = True  # Whether to overwrite existing probability matrix files
 MODEL_VERSION = 'nopass_nolayernorm'  # Version suffix for probability files (use '' for default, '_v2' for new hyperparameters, etc.)
 
 def find_optimal_f1_threshold(y_true, y_scores):
@@ -636,7 +636,8 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
-    seizures_df = seizures_df[(seizures_df.split == 1) & (seizures_df.stim == 0)]
+    seizures_df = seizures_df[(seizures_df.stim == 0)]
+    seizures_df = seizures_df[seizures_df.split == 2]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -651,12 +652,12 @@ def main():
         {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
         {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 3},
         {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
-        {'model': LiNDDA, 'sequence_length': 6, 'forecast_length': 5},
-        {'model': LiNDDA, 'sequence_length': 7, 'forecast_length': 6},
-        {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 7},
+        # {'model': LiNDDA, 'sequence_length': 6, 'forecast_length': 5},
+        # {'model': LiNDDA, 'sequence_length': 7, 'forecast_length': 6},
+        # {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 7},
         
         # GIN MODELS
-        {'model': GIN, 'sequence_length': 4, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 4, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 8, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
 
@@ -664,7 +665,7 @@ def main():
         {'model': NDD, 'sequence_length': 12, 'forecast_length': 1},
 
         # MINDD MODELS
-        {'model': MINDD, 'sequence_length': 3, 'forecast_length': 2},
+        # {'model': MINDD, 'sequence_length': 3, 'forecast_length': 2},
         # {'model': MINDD, 'sequence_length': 4, 'forecast_length': 3},
         # {'model': MINDD, 'sequence_length': 5, 'forecast_length': 4},
 
@@ -706,7 +707,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v7_auprc.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v7_auprc.csv"),index=False)
 
 if __name__ == "__main__":
     main()
