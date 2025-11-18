@@ -42,12 +42,16 @@ from mne_bids import BIDSPath, read_raw_bids
 from ieeg.auth import Session
 import pandas as pd
 import numpy as np
-import torch
+try:
+    import torch
+except:
+    print("torch not found")
+    pass
 
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
-from scipy.integrate import simps
+from scipy.integrate import simpson
 import scipy.signal as sig
 import scipy as sc
 from sklearn.preprocessing import normalize
@@ -56,8 +60,6 @@ from sklearn.utils import resample
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from fooof import FOOOFGroup
-import nibabel as nii
 
 warnings.filterwarnings("ignore")
 
