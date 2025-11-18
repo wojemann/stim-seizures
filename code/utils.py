@@ -42,8 +42,11 @@ from mne_bids import BIDSPath, read_raw_bids
 # nonstandard imports
 import pandas as pd
 import numpy as np
-import torch
-
+try:
+    import torch
+except:
+    print("torch not found")
+    pass
 from scipy.signal import iirnotch, sosfiltfilt, butter, welch, coherence, filtfilt
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import minimize
