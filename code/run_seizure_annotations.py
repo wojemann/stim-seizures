@@ -12,9 +12,10 @@ os.makedirs('/tmp/matplotlib-cache', exist_ok=True)
 
 # Scientific imports
 import numpy as np
+import scipy as sc
 import pandas as pd
 from tqdm import tqdm
-from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
+from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score, precision_recall_curve, auc
 
 # Plotting imports - fix macOS backend issues
 import matplotlib
@@ -48,7 +49,7 @@ datapath,prodatapath,figpath,metapath = Config.deal(['datapath','prodatapath','f
 plt.rcParams['image.cmap'] = 'magma'
 
 # Global configuration
-OVERWRITE = False  # Whether to overwrite existing probability matrix files
+OVERWRITE = True  # Whether to overwrite existing probability matrix files
 
 def find_optimal_f1_threshold(y_true, y_scores):
     """Find threshold that maximizes F1 score."""
@@ -125,13 +126,23 @@ def compute_all_metrics(y_true, y_scores, threshold):
     }
 
 def get_metrics(onset_mask, onset_prob):
-    optimal_threshold, opt_se, opt_sp, auc = index_of_union_threshold(
+    optimal_threshold, opt_se, opt_sp, auroc = index_of_union_threshold(
                     onset_mask, onset_prob
                 )
     onset_pred = onset_prob > optimal_threshold
     f1 = f1_score(onset_mask, onset_pred)
     phi = matthews_corrcoef(onset_mask, onset_pred)
-    return optimal_threshold, opt_se, opt_sp, auc, f1, phi
+    
+    # Calculate AUPRC (raw and normalized)
+    precision, recall, _ = precision_recall_curve(onset_mask, onset_prob)
+    auprc_raw = auc(recall, precision)
+    
+    # Normalized AUPRC: adjusts for class imbalance
+    # Baseline is the prevalence of positive class (random classifier performance)
+    baseline = np.mean(onset_mask)
+    auprc_normalized = (auprc_raw - baseline) / (1 - baseline) if baseline < 1 else np.nan
+    
+    return optimal_threshold, opt_se, opt_sp, auroc, f1, phi, auprc_raw, auprc_normalized
 
 def run_model_task(params: tuple) -> list:
     """
@@ -197,10 +208,13 @@ def run_model_task(params: tuple) -> list:
                 if len(np.unique(onset_mask)) == 2:
                     onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
                     onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
-                    onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
+                    
+                    # Apply smoothing to match fresh computation
+                    sz_prob_smooth = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob, size=20, mode='nearest', axis=0, origin=0), columns=sz_prob.columns)
+                    onset_prob = sz_prob_smooth.iloc[onset_idx:onset_odx, :].mean()
                     
                     # IoU-optimized threshold metrics
-                    iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
+                    iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc_raw, auprc_normalized = get_metrics(onset_mask, onset_prob)
                     # Calculate additional IoU metrics (precision, recall)
                     iou_pred = onset_prob > iou_threshold
                     iou_precision = precision_score(onset_mask, iou_pred)
@@ -221,7 +235,9 @@ def run_model_task(params: tuple) -> list:
                             split=split,
                             stim=stim,
                             model=model_name,
-                            auc=auc,
+                            auc=auroc,
+                            auprc_raw=auprc_raw,
+                            auprc_normalized=auprc_normalized,
                             # IoU-optimized metrics
                             iou_threshold=iou_threshold,
                             iou_f1=iou_f1,
@@ -257,6 +273,8 @@ def run_model_task(params: tuple) -> list:
                             stim=stim,
                             model=model_name,
                             auc=np.nan,
+                            auprc_raw=np.nan,
+                            auprc_normalized=np.nan,
                             # IoU-optimized metrics
                             iou_threshold=np.nan,
                             iou_f1=np.nan,
@@ -360,10 +378,11 @@ def run_model_task(params: tuple) -> list:
             if len(np.unique(onset_mask)) == 2:
                 onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
                 onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
+                sz_prob = pd.DataFrame(sc.ndimage.uniform_filter1d(sz_prob,size=20,mode='nearest',axis=0,origin=0),columns=sz_prob.columns)
                 onset_prob = sz_prob.iloc[onset_idx:onset_odx, :].mean()
                 
                 # IoU-optimized threshold metrics
-                iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
+                iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc_raw, auprc_normalized = get_metrics(onset_mask, onset_prob)
                 # Calculate additional IoU metrics (precision, recall)
                 iou_pred = onset_prob > iou_threshold
                 iou_precision = precision_score(onset_mask, iou_pred)
@@ -384,7 +403,9 @@ def run_model_task(params: tuple) -> list:
                         split=split,
                         stim=stim,
                         model=model_name,
-                        auc=auc,
+                        auc=auroc,
+                        auprc_raw=auprc_raw,
+                        auprc_normalized=auprc_normalized,
                         # IoU-optimized metrics
                         iou_threshold=iou_threshold,
                         iou_f1=iou_f1,
@@ -420,6 +441,8 @@ def run_model_task(params: tuple) -> list:
                         stim=stim,
                         model=model_name,
                         auc=np.nan,
+                        auprc_raw=np.nan,
+                        auprc_normalized=np.nan,
                         # IoU-optimized metrics
                         iou_threshold=np.nan,
                         iou_f1=np.nan,
@@ -485,7 +508,7 @@ def main():
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
     seizures_df = seizures_df[(seizures_df.stim == 0)]
-    seizures_df = seizures_df[(seizures_df.split == 1)]
+    seizures_df = seizures_df[(seizures_df.split == 2)]
     # seizures_df = seizures_df[(seizures_df.split )] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -532,7 +555,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    # result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results_v7_auprc.csv"),index=False)
     
 if __name__ == "__main__":
     main()

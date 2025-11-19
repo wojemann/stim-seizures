@@ -128,17 +128,13 @@ def main():
         print(f"Processing with threshold metric: {FILE_KEY}")
         print(f"{'='*80}\n")
         
-        # Load model thresholds - expecting format: model_metric_sequence_forecast
-        old_thresholds_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{FILE_KEY}_v2.csv"))
-        old_thresholds_dict_mean = dict(zip(old_thresholds_df.model, old_thresholds_df[FILE_KEY+'_threshold']))
-        old_thresholds_df_med = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{FILE_KEY}_v2_median.csv"))
-        old_thresholds_dict_median = dict(zip(old_thresholds_df_med.model, old_thresholds_df_med[FILE_KEY+'_threshold']))
-        thresholds_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{FILE_KEY}_v3.csv"))  # Update path as needed
-        thresholds_df.loc[0,'model'] += 'nopass_nolayernorm'
-        thresholds_df_med  = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{FILE_KEY}_v3_median.csv"))
-        thresholds_df_med.loc[0,'model'] += 'nopass_nolayernorm'
-        threshold_dict_mean = dict(zip(thresholds_df.model, thresholds_df[FILE_KEY+'_threshold']))
-        threshold_dict_median = dict(zip(thresholds_df_med.model, thresholds_df_med[FILE_KEY+'_threshold']))
+        # Load all_thresholds_v5.csv
+        thresholds_df = pd.read_csv('/Users/wojemann/local_data/dynasd_data/PROCESSED_DATA/all_thresholds_v5.csv')
+        # Filter for current metric and create dictionaries by aggregation
+        thresholds_mean = thresholds_df[(thresholds_df.metric == FILE_KEY) & (thresholds_df.agg == 'mean')]
+        thresholds_median = thresholds_df[(thresholds_df.metric == FILE_KEY) & (thresholds_df.agg == 'median')]
+        threshold_dict_mean = dict(zip(thresholds_mean.model, thresholds_mean.threshold))
+        threshold_dict_median = dict(zip(thresholds_median.model, thresholds_median.threshold))
         
         # Results storage
         spread_results = []
@@ -166,12 +162,8 @@ def main():
                 else:
                     print(f"Warning: No time column found for {patient} {onset_run} {key}")
                     continue
-                if (suffix == 'nopass_nolayernorm') or (prob_info['forecast_length'] > 1):
-                    threshold_dicts = [threshold_dict_mean, threshold_dict_median]
-                else:
-                    threshold_dicts  = [old_thresholds_dict_mean, old_thresholds_dict_median]
 
-                for aggregation, threshold_dict in zip(['mean', 'median'], threshold_dicts):
+                for aggregation, threshold_dict in zip(['mean', 'median'], [threshold_dict_mean, threshold_dict_median]):
                     if key in threshold_dict:
                         threshold = threshold_dict[key]
                         prob_data = prob_info['data']

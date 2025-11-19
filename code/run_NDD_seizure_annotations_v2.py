@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import scipy as sc
 from tqdm import tqdm
-from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
+from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score, precision_recall_curve, auc
 
 # Plotting imports
 import matplotlib.pyplot as plt
@@ -120,13 +120,23 @@ def compute_all_metrics(y_true, y_scores, threshold):
     }
 
 def get_metrics(onset_mask, onset_prob):
-    optimal_threshold, opt_se, opt_sp, auc = index_of_union_threshold(
+    optimal_threshold, opt_se, opt_sp, auroc = index_of_union_threshold(
                     onset_mask, onset_prob
                 )
     onset_pred = onset_prob > optimal_threshold
     f1 = f1_score(onset_mask, onset_pred)
     phi = matthews_corrcoef(onset_mask, onset_pred)
-    return optimal_threshold, opt_se, opt_sp, auc, f1, phi
+    
+    # Calculate AUPRC (raw and normalized)
+    precision, recall, _ = precision_recall_curve(onset_mask, onset_prob)
+    auprc_raw = auc(recall, precision)
+    
+    # Normalized AUPRC: adjusts for class imbalance
+    # Baseline is the prevalence of positive class (random classifier performance)
+    baseline = np.mean(onset_mask)
+    auprc_normalized = (auprc_raw - baseline) / (1 - baseline) if baseline < 1 else np.nan
+    
+    return optimal_threshold, opt_se, opt_sp, auroc, f1, phi, auprc_raw, auprc_normalized
 
 def run_model_task(params: tuple) -> list:
     """
@@ -182,8 +192,6 @@ def run_model_task(params: tuple) -> list:
             
             model_paths[f"{model_name}_{sequence_length}_{forecast_length}"] = {
                 'mse_prob': base_path.replace('sz_prob_', 'mse_prob_'),
-                # 'mse_z_prob': base_path.replace('sz_prob_', 'mse_z_prob_'),
-                # 'mse_zs_prob': base_path.replace('sz_prob_', 'mse_zs_prob_')
             }
             
             # Check if any file is missing
@@ -215,10 +223,13 @@ def run_model_task(params: tuple) -> list:
                     if len(np.unique(onset_mask)) == 2:
                         onset_idx = int(np.argmin(np.abs(sz_prob_times - onset_time_sec)))
                         onset_odx = int(np.argmin(np.abs(sz_prob_times - (onset_time_sec + 3))))
-                        onset_prob = df.iloc[onset_idx:onset_odx, :].mean()
+                        
+                        # Apply smoothing to match fresh computation
+                        df_smooth = pd.DataFrame(sc.ndimage.uniform_filter1d(df, size=20, axis=0), columns=df.columns)
+                        onset_prob = df_smooth.iloc[onset_idx:onset_odx, :].mean()
                         
                         # IoU-optimized threshold metrics
-                        iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
+                        iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc_raw, auprc_normalized = get_metrics(onset_mask, onset_prob)
                         iou_pred = onset_prob > iou_threshold
                         iou_precision = precision_score(onset_mask, iou_pred)
                         iou_recall = recall_score(onset_mask, iou_pred)
@@ -239,7 +250,9 @@ def run_model_task(params: tuple) -> list:
                                 model=model_name+'_'+metric,
                                 sequence=sequence_length,
                                 forecast=forecast_length,
-                                auc=auc,
+                                auc=auroc,
+                                auprc_raw=auprc_raw,
+                                auprc_normalized=auprc_normalized,
                                 # Timing metrics (NaN when loading from disk)
                                 fit_time=np.nan,
                                 inference_time=np.nan,
@@ -280,6 +293,8 @@ def run_model_task(params: tuple) -> list:
                                 sequence=sequence_length,
                                 forecast=forecast_length,
                                 auc=np.nan,
+                                auprc_raw=np.nan,
+                                auprc_normalized=np.nan,
                                 # Timing metrics (NaN when loading from disk)
                                 fit_time=np.nan,
                                 inference_time=np.nan,
@@ -497,7 +512,7 @@ def run_model_task(params: tuple) -> list:
 
                     onset_prob = df.iloc[onset_idx:onset_odx,:].mean()
                     
-                    iou_threshold, iou_sensitivity, iou_specificity, auc, iou_f1, iou_phi = get_metrics(onset_mask, onset_prob)
+                    iou_threshold, iou_sensitivity, iou_specificity, auroc, iou_f1, iou_phi, auprc_raw, auprc_normalized = get_metrics(onset_mask, onset_prob)
                     # Calculate additional IoU metrics (precision, recall)
                     iou_pred = onset_prob > iou_threshold
                     iou_precision = precision_score(onset_mask, iou_pred)
@@ -519,7 +534,9 @@ def run_model_task(params: tuple) -> list:
                             model=model_name+'_'+metric,
                             sequence = sequence_length,
                             forecast=forecast_length,
-                            auc=auc,
+                            auc=auroc,
+                            auprc_raw=auprc_raw,
+                            auprc_normalized=auprc_normalized,
                             # Timing metrics
                             fit_time=fit_time,
                             inference_time=inference_time,
@@ -560,6 +577,8 @@ def run_model_task(params: tuple) -> list:
                             sequence = sequence_length,
                             forecast=forecast_length,
                             auc=np.nan,
+                            auprc_raw=np.nan,
+                            auprc_normalized=np.nan,
                             # Timing metrics
                             fit_time=fit_time,
                             inference_time=inference_time,
@@ -617,7 +636,8 @@ def main():
     
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
-    seizures_df = seizures_df[(seizures_df.split == 1) & (seizures_df.stim == 0)]
+    seizures_df = seizures_df[(seizures_df.stim == 0)]
+    seizures_df = seizures_df[seizures_df.split == 2]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -632,12 +652,12 @@ def main():
         {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
         {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 3},
         {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
-        {'model': LiNDDA, 'sequence_length': 6, 'forecast_length': 5},
-        {'model': LiNDDA, 'sequence_length': 7, 'forecast_length': 6},
-        {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 7},
+        # {'model': LiNDDA, 'sequence_length': 6, 'forecast_length': 5},
+        # {'model': LiNDDA, 'sequence_length': 7, 'forecast_length': 6},
+        # {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 7},
         
         # GIN MODELS
-        {'model': GIN, 'sequence_length': 4, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 4, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 8, 'forecast_length': 1},
         {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
 
@@ -645,7 +665,7 @@ def main():
         {'model': NDD, 'sequence_length': 12, 'forecast_length': 1},
 
         # MINDD MODELS
-        {'model': MINDD, 'sequence_length': 3, 'forecast_length': 2},
+        # {'model': MINDD, 'sequence_length': 3, 'forecast_length': 2},
         # {'model': MINDD, 'sequence_length': 4, 'forecast_length': 3},
         # {'model': MINDD, 'sequence_length': 5, 'forecast_length': 4},
 
@@ -687,7 +707,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v7.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v7_auprc.csv"),index=False)
 
 if __name__ == "__main__":
     main()
