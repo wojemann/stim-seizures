@@ -639,7 +639,7 @@ def main():
     print(f"Found {len(seizures_df)} test seizures")
     
     # Load clinical annotations
-    annotations_df = pd.read_pickle(ospj(prodatapath, "threshold_tuning_consensus_v2.pkl"))
+    annotations_df = pd.read_pickle(ospj(prodatapath, "threshold_tuning_consensus_v3.pkl"))
     annotations_df = annotations_df[annotations_df.stim == 0]
     # Load learned thresholds   
     ndd_thresholds = {}
@@ -660,16 +660,20 @@ def main():
         except:
             print(f"Warning: Could not load benchmark_val_thresholds_{metric}.csv")
             benchmark_thresholds[metric] = {}
-    
+    thresholds = pd.read_csv(ospj(prodatapath, 'all_thresholds_v5.csv'))
+    ndd_thresholds = dict(zip(thresholds.model, thresholds))
     # Model configurations
     ndd_models = [
-        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
-        # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 3, 'forecast_length': 2, 'metric': 'mse', 'suffix': ''},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 2, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 3, 'forecast_length': 2, 'metric': 'mse', 'suffix': ''},
+        {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 4, 'forecast_length': 3, 'metric': 'mse', 'suffix': ''},
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 5, 'forecast_length': 4, 'metric': 'mse', 'suffix': ''},
         # {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 9, 'forecast_length': 6, 'metric': 'mse', 'suffix': ''},
         {'model': GIN, 'model_name': 'GIN', 'sequence_length': 12, 'forecast_length': 1, 'metric': 'mse', 'suffix': MODEL_VERSION},
+        {'model': GIN, 'model_name': 'GIN', 'sequence_length': 8, 'forecast_length': 1, 'metric': 'mse', 'suffix': MODEL_VERSION},
         # {'model': ONCET, 'model_name': 'ONCET', 'suffix': ''},
-        # {'model': NDD, 'model_name': 'NDD', 'sequence_length': 12, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
+        {'model': NDD, 'model_name': 'NDD', 'sequence_length': 12, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
     ]
     
     benchmark_models = [
@@ -790,29 +794,25 @@ def main():
             onset_idx = int(np.argmin(np.abs((prob_times - 180) + time_diff)))
             spread_idx = int(np.argmin(np.abs((prob_times - 190) + time_diff)))
             offset_idx = int(np.argmin(np.abs((prob_times - (np.max(prob_times)-120)) + time_diff)))
+            
             # Extract first contacts and create masks
             if model_type == 'ndd':
                 prob_chs = np.array([ch.split('-')[0] for ch in prob_chs_raw])
                 onset_mask = np.array([ch in onset_labels for ch in prob_chs])
                 spread_mask = np.array([ch in spread_labels for ch in prob_chs])
                 full_model_key = f"{model_name}_mse_sl{prob_info['sequence_length']}_fl{prob_info['forecast_length']}"
-                learned_thresholds_dict = {
-                    'phi': ndd_thresholds['phi'].get(full_model_key, np.nan),
-                    'f1': ndd_thresholds['f1'].get(full_model_key, np.nan),
-                    'iou': ndd_thresholds['iou'].get(full_model_key, np.nan),
-                    'tau': model.get_threshold(pd.DataFrame(sz_prob_smooth.T,columns=prob_chs_raw),method='automedian')
-                }
+                model_thresholds = thresholds.loc[thresholds.model == full_model_key]
+                learned_thresholds_dict = dict(zip(model_thresholds['metric'] + '_' + model_thresholds['aggregation'],model_thresholds['threshold']))
+                learned_thresholds_dict['tau'] = model.get_threshold(pd.DataFrame(sz_prob_smooth.T,columns=prob_chs_raw),method='automedian')
+            
             else:  # benchmark
                 prob_chs = np.array([ch.split('-')[0] for ch in prob_chs_raw])
                 onset_mask = np.array([ch in onset_labels for ch in prob_chs])  
                 spread_mask = np.array([ch in spread_labels for ch in prob_chs])
                 full_model_key = model_name
-                learned_thresholds_dict = {
-                    'phi': benchmark_thresholds['phi'].get(model_name, np.nan),
-                    'f1': benchmark_thresholds['f1'].get(model_name, np.nan),
-                    'iou': benchmark_thresholds['iou'].get(model_name, np.nan)
-                }
-            
+                model_thresholds = thresholds.loc[thresholds.model == full_model_key]
+                learned_thresholds_dict = dict(zip(model_thresholds['metric'] + '_' + model_thresholds['aggregation'],model_thresholds['threshold']))
+
             # Calculate all metrics using unified function
             calculated_metrics = calculate_all_metrics(
                 sz_prob_smooth, prob_chs, onset_idx, spread_idx,
@@ -870,7 +870,7 @@ def main():
         # Save full results as pickle (includes probability dataframes)
         results_df_full = pd.DataFrame(results)
         # pickle_path = ospj(prodatapath, "test_validation_results_nopass_nolayernorm_v3_mean_thresholds.pkl")
-        pickle_path = ospj(prodatapath, "test_validation_results_ONCET_v1.pkl")
+        pickle_path = ospj(prodatapath, "test_validation_results_v4.pkl")
         results_df_full.to_pickle(pickle_path)
         print(f"Full results (with probability data) saved to {pickle_path}")
         
@@ -885,7 +885,7 @@ def main():
         
         results_df_csv = pd.DataFrame(results_csv)
         # csv_path = ospj(prodatapath, "test_validation_results_v3_mean_thresholds.csv")
-        csv_path = ospj(prodatapath, "test_validation_results_ONCET_v1.csv")
+        csv_path = ospj(prodatapath, "test_validation_results_v4.csv")
         results_df_csv.to_csv(csv_path, index=False)
         print(f"CSV results (without probability data) saved to {csv_path}")
         

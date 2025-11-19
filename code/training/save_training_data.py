@@ -60,8 +60,9 @@ OVERWRITE = True  # Whether to overwrite existing probability matrix files
 ONSET_TIME = 180
 OFFSET_TIME = 120
 SPREAD_TIME = 5
-def save_training_data(patient, onset_run, onset_labels, montage, onset_time):
-    electrode_localizations = load_electrode_localizations(patient, prodatapath,keep_white_matter=False)
+np.random.seed(171999)
+def save_training_data(patient, onset_run, onset_labels, montage):
+    electrode_localizations = load_electrode_localizations(patient, prodatapath,keep_white_matter=True)
     if electrode_localizations is None:
         print(f"Warning: No electrode localizations found for {patient}")
         return None
@@ -97,9 +98,10 @@ def save_training_data(patient, onset_run, onset_labels, montage, onset_time):
     scl.fit(seizure_pre.iloc[:fs_raw*120,])
     seizure_z = pd.DataFrame(scl.transform(seizure_pre),columns=seizure_pre.columns)
     art_channel_mask = seizure_z.loc[180*fs_raw:,:].abs().max() <= (np.median(seizure_z.loc[180*fs_raw:,:].abs().max())*50)
-    art_chs = seizure_z.columns[art_channel_mask]
-    art_chs = [ch for ch in art_chs if ch.split('-')[0] not in onset_labels]
-    seizure_nart = seizure_z.loc[:,art_chs]
+    bad_chs = seizure_z.columns[~art_channel_mask]
+    bad_chs = [ch for ch in bad_chs if ch.split('-')[0] not in onset_labels]
+    good_ch_mask = [ch not in bad_chs for ch in seizure_z.columns]
+    seizure_nart = seizure_z.loc[:,good_ch_mask]
 
     onset_mask = np.array([ch.split('-')[0] in onset_labels for ch in seizure_nart.columns])
 
@@ -118,23 +120,34 @@ def save_training_data(patient, onset_run, onset_labels, montage, onset_time):
     # Class 1: Onset clips (from seizure onset channels)
     onset_clips = [{'patient': patient, 'onset': onset_run, 'class': 1, 'data': clip} 
                    for clip in get_windowed_data(
-                       seizure_nart.loc[onset_time*fs_raw:(onset_time+5)*fs_raw, onset_mask],
+                       seizure_nart.loc[ONSET_TIME*fs_raw:(ONSET_TIME+ SPREAD_TIME)*fs_raw, onset_mask],
                        window_size, stride)]
     
     # Class 2: Spread clips (from seizure onset channels, later in time)
     spread_clips = [{'patient': patient, 'onset': onset_run, 'class': 2, 'data': clip} 
                     for clip in get_windowed_data(
-                        seizure_nart.loc[(onset_time+SPREAD_TIME)*fs_raw:(onset_time+SPREAD_TIME+15)*fs_raw, onset_mask],
+                        seizure_nart.loc[(ONSET_TIME+SPREAD_TIME)*fs_raw:(ONSET_TIME+SPREAD_TIME+25)*fs_raw, onset_mask],
                         window_size, stride)]
     
     # Class 0: Non-onset clips (from non-onset channels)
-    # nonset_ch = np.random.choice(seizure_nart.columns[~onset_mask], size=sum(onset_mask), replace=False)
-    nonset_ch = seizure_nart.columns[~onset_mask]
+    nonset_ch = np.random.choice(seizure_nart.columns[~onset_mask], size=min(sum(onset_mask)*4,sum(~onset_mask)), replace=False)
+    
+    # Class 3: Post-ictal clips
+    offset_time = len(seizure_nart)/fs_raw-OFFSET_TIME + 30
+    post_ictal_clips = [{'patient': patient, 'onset': onset_run, 'class': 3, 'data': clip} 
+                        for clip in get_windowed_data(
+                            seizure_nart.loc[int(offset_time*fs_raw):int((offset_time + 10)*fs_raw), nonset_ch],
+                            window_size, stride)]
+    
+    
+    # nonset_ch = seizure_nart.columns[~onset_mask]
     non_onset_clips = [{'patient': patient, 'onset': onset_run, 'class': 0, 'data': clip} 
                        for clip in get_windowed_data(
-                           seizure_nart.loc[10*fs_raw:20*fs_raw, nonset_ch],
+                        #    seizure_nart.loc[10*fs_raw:20*fs_raw, nonset_ch],
+                           seizure_nart.loc[10*fs_raw:40*fs_raw, nonset_ch],
                            window_size, stride)]
-    return onset_clips + spread_clips + non_onset_clips
+
+    return onset_clips + spread_clips + non_onset_clips + post_ictal_clips
 
 def main():
     """
@@ -159,12 +172,11 @@ def main():
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
     seizures_df = seizures_df[(seizures_df.stim == 0) & (seizures_df.split == 1)]
-    seizures_df = seizures_df[seizures_df.notes.apply(lambda x: 'nina' not in str(x).lower())]
-    seizures_df = seizures_df[seizures_df.source.apply(lambda x: 'nina' not in str(x).lower())]
+    # seizures_df = seizures_df[seizures_df.notes.apply(lambda x: 'nina' not in str(x).lower())]
+    # seizures_df = seizures_df[seizures_df.source.apply(lambda x: 'nina' not in str(x).lower())]
     # seizures_df = seizures_df[(seizures_df.split )] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
-    onset_time = 180          # Seizure onset time in recording (seconds)
     montage = 'bipolar'       # Electrode montage for preprocessing
     # all_models = [WVNT]
 
@@ -177,7 +189,7 @@ def main():
         patient = row.Patient
         sz = row.onset
         offset = row.offset
-        if (offset-sz) < 20:
+        if ((offset-sz) < 20) | ((offset - sz) > 300) | (patient == 'HUP112'):
             continue
         pbar.set_description(desc=f"Patient: {patient} | Seizure: {sz}",refresh=True)
         onset_run = str(int(row.onset))
@@ -185,7 +197,7 @@ def main():
             onset_labels = []
         else:
             onset_labels = clean_labels([l.strip() for l in row.SOZ.split(',')], patient)
-        tasks.append((patient, onset_run, onset_labels, montage, onset_time))
+        tasks.append((patient, onset_run, onset_labels, montage))
 
     # Execute all tasks and collect clips
     # results_nested = pqdm(tasks, save_training_data, n_jobs=12)
@@ -224,7 +236,7 @@ def main():
         })
     
     # Create H5 file with hierarchical structure
-    output_file = ospj(prodatapath, "seizure_training_data_v2.h5")
+    output_file = ospj(prodatapath, "seizure_training_data_v3.h5")
     print(f"\nSaving data to {output_file}...")
     
     with h5py.File(output_file, 'w') as h5f:
@@ -257,7 +269,7 @@ def main():
     # Print summary statistics
     print("\n=== Summary Statistics ===")
     total_clips = 0
-    class_counts = {0: 0, 1: 0, 2: 0}
+    class_counts = {0: 0, 1: 0, 2: 0, 3: 0}
     for patient in patient_seizure_clips:
         for onset in patient_seizure_clips[patient]:
             clips = patient_seizure_clips[patient][onset]
@@ -269,6 +281,6 @@ def main():
     print(f"Class 0 (non-onset): {class_counts[0]}")
     print(f"Class 1 (onset): {class_counts[1]}")
     print(f"Class 2 (spread): {class_counts[2]}")
-    
+    print(f"Class 3 (post-ictal): {class_counts[3]}")
 if __name__ == "__main__":
     main()
