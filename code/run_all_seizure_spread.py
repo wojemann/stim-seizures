@@ -32,7 +32,7 @@ from config import Config
 # Get paths from config 
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 
-FILE_KEYS = ['f1', 'iou', 'phi']  # Different threshold optimization metrics
+FILE_KEYS = ['f1', 'iou', 'phi', 'f1_plateau', 'phi_plateau']  # Different threshold optimization metrics
 
 
 # ==============================================================================
@@ -60,7 +60,7 @@ def get_all_models():
     ndd_configs = [
         ('LiNDDA', LiNDDA, 1, 1), ('LiNDDA', LiNDDA, 2, 1), ('LiNDDA', LiNDDA, 3, 2),
         ('LiNDDA', LiNDDA, 4, 3), ('LiNDDA', LiNDDA, 5, 4), ('LiNDDA', LiNDDA, 6, 5),
-        ('LiNDDA', LiNDDA, 7, 6), ('LiNDDA', LiNDDA, 8, 7),
+        ('LiNDDA', LiNDDA, 7, 6),
         ('GIN', GIN, 4, 1), ('GIN', GIN, 8, 1), ('GIN', GIN, 12, 1),
         ('MINDD', MINDD, 3, 2), ('NDD', NDD, 12, 1),
     ]
@@ -378,7 +378,7 @@ def main():
     all_models = get_all_models()
     
     # Load all thresholds once
-    thresholds_df = pd.read_csv('/Users/wojemann/local_data/dynasd_data/PROCESSED_DATA/all_thresholds_v5.csv')
+    thresholds_df = pd.read_csv('/Users/wojemann/local_data/dynasd_data/PROCESSED_DATA/all_thresholds_v6.csv')
     
     # Results storage for all threshold metrics
     all_spread_results = []
@@ -477,7 +477,7 @@ def main():
     # Save all results to single file
     if all_spread_results:
         results_df = pd.DataFrame(all_spread_results)
-        output_path = ospj(prodatapath, "all_models_spread_analysis_results_v7.csv")
+        output_path = ospj(prodatapath, "all_models_spread_analysis_results_v8.csv")
         results_df.to_csv(output_path, index=False)
         print(f"\n{'='*80}")
         print(f"All results saved to {output_path}")

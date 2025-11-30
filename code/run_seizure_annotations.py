@@ -3,12 +3,10 @@ import sys
 import os
 import glob
 from os.path import join as ospj
+from typing import Tuple
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow INFO/WARN messages
 os.environ['TF_TRT_DISABLED'] = '1'       # Silence TF-TRT warnings if TensorRT not installed
-# Fix matplotlib cache issues on macOS
-os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib-cache'
-os.makedirs('/tmp/matplotlib-cache', exist_ok=True)
 
 # Scientific imports
 import numpy as np
@@ -18,8 +16,6 @@ from tqdm import tqdm
 from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score, precision_recall_curve, auc
 
 # Plotting imports - fix macOS backend issues
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend to prevent stalling
 import matplotlib.pyplot as plt
 
 # NOTE: TensorFlow import removed - was only used for GPU configuration
@@ -49,7 +45,63 @@ datapath,prodatapath,figpath,metapath = Config.deal(['datapath','prodatapath','f
 plt.rcParams['image.cmap'] = 'magma'
 
 # Global configuration
-OVERWRITE = True  # Whether to overwrite existing probability matrix files
+OVERWRITE = False  # Whether to overwrite existing probability matrix files
+
+def compute_optimal_threshold(
+    y_true: np.ndarray,
+    y_probs: np.ndarray,
+    metric: str = 'f1',
+    tolerance: float = None
+) -> Tuple[float, float]:
+    """
+    Find optimal classification threshold with plateau detection.
+    """
+    if tolerance is None:
+        tolerance = 0.01
+    
+    min_prob = np.percentile(y_probs, 5)
+    max_prob = np.percentile(y_probs, 99)
+    thresholds = np.linspace(min_prob, max_prob, 301)
+    scores = []
+    
+    for threshold in thresholds:
+        y_pred = (y_probs >= threshold).astype(int)
+        
+        if metric == 'f1':
+            score = f1_score(y_true, y_pred, zero_division=0)
+        elif metric == 'phi':
+            score = matthews_corrcoef(y_true, y_pred)
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+        
+        scores.append(score)
+    
+    scores = np.array(scores)
+    best_score = np.max(scores)
+    
+    within_tolerance = scores >= (best_score - tolerance)
+    candidate_indices = np.where(within_tolerance)[0]
+    
+    if len(candidate_indices) == 0:
+        best_idx = np.argmax(scores)
+        return thresholds[best_idx], best_score
+    
+    segments = []
+    current_segment = [candidate_indices[0]]
+    
+    for i in range(1, len(candidate_indices)):
+        if candidate_indices[i] == candidate_indices[i-1] + 1:
+            current_segment.append(candidate_indices[i])
+        else:
+            segments.append(current_segment)
+            current_segment = [candidate_indices[i]]
+    segments.append(current_segment)
+    
+    longest_segment = max(segments, key=len)
+    mid_idx = longest_segment[len(longest_segment) // 2]
+    best_threshold = thresholds[mid_idx]
+    
+    return best_threshold, best_score
 
 def find_optimal_f1_threshold(y_true, y_scores):
     """Find threshold that maximizes F1 score."""
@@ -220,13 +272,22 @@ def run_model_task(params: tuple) -> list:
                     iou_precision = precision_score(onset_mask, iou_pred)
                     iou_recall = recall_score(onset_mask, iou_pred)
                     
+                    onset_mask_arr = np.asarray(onset_mask, dtype=int)
+                    onset_prob_arr = onset_prob.to_numpy()
+                    
                     # F1-optimized threshold metrics
-                    f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
-                    f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+                    f1_threshold = find_optimal_f1_threshold(onset_mask_arr, onset_prob_arr)
+                    f1_metrics = compute_all_metrics(onset_mask_arr, onset_prob_arr, f1_threshold)
+                    f1_threshold_plateau, f1_plateau_score = compute_optimal_threshold(
+                        onset_mask_arr, onset_prob_arr, metric='f1'
+                    )
                     
                     # Phi-optimized threshold metrics
-                    phi_threshold = find_optimal_phi_threshold(onset_mask, onset_prob)
-                    phi_metrics = compute_all_metrics(onset_mask, onset_prob, phi_threshold)
+                    phi_threshold = find_optimal_phi_threshold(onset_mask_arr, onset_prob_arr)
+                    phi_metrics = compute_all_metrics(onset_mask_arr, onset_prob_arr, phi_threshold)
+                    phi_threshold_plateau, phi_plateau_score = compute_optimal_threshold(
+                        onset_mask_arr, onset_prob_arr, metric='phi'
+                    )
 
                     results.append(
                         dict(
@@ -254,6 +315,8 @@ def run_model_task(params: tuple) -> list:
                             f1_specificity=f1_metrics['specificity'],
                             f1_precision=f1_metrics['precision'],
                             f1_recall=f1_metrics['recall'],
+                            f1_threshold_plateau=f1_threshold_plateau,
+                            f1_plateau_score=f1_plateau_score,
                             # Phi-optimized metrics
                             phi_threshold=phi_threshold,
                             phi_f1=phi_metrics['f1'],
@@ -262,6 +325,8 @@ def run_model_task(params: tuple) -> list:
                             phi_specificity=phi_metrics['specificity'],
                             phi_precision=phi_metrics['precision'],
                             phi_recall=phi_metrics['recall'],
+                            phi_threshold_plateau=phi_threshold_plateau,
+                            phi_plateau_score=phi_plateau_score,
                         )
                     )
                 else:
@@ -291,6 +356,8 @@ def run_model_task(params: tuple) -> list:
                             f1_specificity=np.nan,
                             f1_precision=np.nan,
                             f1_recall=np.nan,
+                            f1_threshold_plateau=np.nan,
+                            f1_plateau_score=np.nan,
                             # Phi-optimized metrics
                             phi_threshold=np.nan,
                             phi_f1=np.nan,
@@ -299,6 +366,8 @@ def run_model_task(params: tuple) -> list:
                             phi_specificity=np.nan,
                             phi_precision=np.nan,
                             phi_recall=np.nan,
+                            phi_threshold_plateau=np.nan,
+                            phi_plateau_score=np.nan,
                         )
                     )
             
@@ -388,13 +457,22 @@ def run_model_task(params: tuple) -> list:
                 iou_precision = precision_score(onset_mask, iou_pred)
                 iou_recall = recall_score(onset_mask, iou_pred)
                 
+                onset_mask_arr = np.asarray(onset_mask, dtype=int)
+                onset_prob_arr = onset_prob.to_numpy()
+                
                 # F1-optimized threshold metrics
-                f1_threshold = find_optimal_f1_threshold(onset_mask, onset_prob)
-                f1_metrics = compute_all_metrics(onset_mask, onset_prob, f1_threshold)
+                f1_threshold = find_optimal_f1_threshold(onset_mask_arr, onset_prob_arr)
+                f1_metrics = compute_all_metrics(onset_mask_arr, onset_prob_arr, f1_threshold)
+                f1_threshold_plateau, f1_plateau_score = compute_optimal_threshold(
+                    onset_mask_arr, onset_prob_arr, metric='f1'
+                )
                 
                 # Phi-optimized threshold metrics
-                phi_threshold = find_optimal_phi_threshold(onset_mask, onset_prob)
-                phi_metrics = compute_all_metrics(onset_mask, onset_prob, phi_threshold)
+                phi_threshold = find_optimal_phi_threshold(onset_mask_arr, onset_prob_arr)
+                phi_metrics = compute_all_metrics(onset_mask_arr, onset_prob_arr, phi_threshold)
+                phi_threshold_plateau, phi_plateau_score = compute_optimal_threshold(
+                    onset_mask_arr, onset_prob_arr, metric='phi'
+                )
 
                 results.append(
                     dict(
@@ -422,6 +500,8 @@ def run_model_task(params: tuple) -> list:
                         f1_specificity=f1_metrics['specificity'],
                         f1_precision=f1_metrics['precision'],
                         f1_recall=f1_metrics['recall'],
+                        f1_threshold_plateau=f1_threshold_plateau,
+                        f1_plateau_score=f1_plateau_score,
                         # Phi-optimized metrics
                         phi_threshold=phi_threshold,
                         phi_f1=phi_metrics['f1'],
@@ -430,6 +510,8 @@ def run_model_task(params: tuple) -> list:
                         phi_specificity=phi_metrics['specificity'],
                         phi_precision=phi_metrics['precision'],
                         phi_recall=phi_metrics['recall'],
+                        phi_threshold_plateau=phi_threshold_plateau,
+                        phi_plateau_score=phi_plateau_score,
                     )
                 )
             else:
@@ -459,6 +541,8 @@ def run_model_task(params: tuple) -> list:
                         f1_specificity=np.nan,
                         f1_precision=np.nan,
                         f1_recall=np.nan,
+                        f1_threshold_plateau=np.nan,
+                        f1_plateau_score=np.nan,
                         # Phi-optimized metrics
                         phi_threshold=np.nan,
                         phi_f1=np.nan,
@@ -467,6 +551,8 @@ def run_model_task(params: tuple) -> list:
                         phi_specificity=np.nan,
                         phi_precision=np.nan,
                         phi_recall=np.nan,
+                        phi_threshold_plateau=np.nan,
+                        phi_plateau_score=np.nan,
                     )
                 )
 
@@ -508,7 +594,7 @@ def main():
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df['stim'] = seizures_df['stim'].fillna(0)
     seizures_df = seizures_df[(seizures_df.stim == 0)]
-    seizures_df = seizures_df[(seizures_df.split == 2)]
+    seizures_df = seizures_df[(seizures_df.split == 1)]
     # seizures_df = seizures_df[(seizures_df.split )] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -555,7 +641,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     # print(result_df)
-    # result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results_v7_auprc.csv"),index=False)
+    result_df.to_csv(ospj(prodatapath,f"benchmark_model_validation_results_v8.csv"),index=False)
     
 if __name__ == "__main__":
     main()
