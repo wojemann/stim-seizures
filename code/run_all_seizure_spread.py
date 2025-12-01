@@ -473,7 +473,31 @@ def main():
                     result_dict.update(spread_metrics)
                     
                     all_spread_results.append(result_dict)
-    
+
+            if model_config['type'] == 'ndd':
+                model = create_model(model_config, num_channels=len(prob_data.columns))
+                first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
+                threshold = model.get_threshold(prob_data.iloc[first_onset_idx:,:], method='automedian')
+                spread_metrics = analyze_spread(
+                    model, prob_data.copy(), prob_times, threshold, 
+                    onset_labels, model_config
+                )
+                result_dict = {
+                    'patient': patient,
+                    'onset': int(onset_run),
+                    'model': key,
+                    'model_name': model_config['name'],
+                    'model_type': model_config['type'],
+                    'aggregation': 'median',
+                    'threshold_metric': 'tau',
+                    'threshold': threshold,
+                    'metric': model_config['metric'],
+                    'sequence_length': model_config['sequence_length'],
+                    'forecast_length': model_config['forecast_length'],
+                }
+                result_dict.update(spread_metrics)
+                all_spread_results.append(result_dict)
+
     # Save all results to single file
     if all_spread_results:
         results_df = pd.DataFrame(all_spread_results)
