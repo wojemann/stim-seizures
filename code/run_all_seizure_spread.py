@@ -59,10 +59,12 @@ def get_all_models():
     # NDD models
     ndd_configs = [
         ('LiNDDA', LiNDDA, 1, 1), ('LiNDDA', LiNDDA, 2, 1), ('LiNDDA', LiNDDA, 3, 2),
-        ('LiNDDA', LiNDDA, 4, 3), ('LiNDDA', LiNDDA, 5, 4), ('LiNDDA', LiNDDA, 6, 5),
-        ('LiNDDA', LiNDDA, 7, 6),
-        ('GIN', GIN, 4, 1), ('GIN', GIN, 8, 1), ('GIN', GIN, 12, 1),
-        ('MINDD', MINDD, 3, 2), ('NDD', NDD, 12, 1),
+        ('LiNDDA', LiNDDA, 4, 3), ('LiNDDA', LiNDDA, 5, 4), 
+        # ('LiNDDA', LiNDDA, 6, 5),('LiNDDA', LiNDDA, 7, 6),
+        # ('GIN', GIN, 4, 1), 
+        ('GIN', GIN, 8, 1), ('GIN', GIN, 12, 1),
+        # ('MINDD', MINDD, 3, 2), 
+        ('NDD', NDD, 12, 1),
     ]
     
     for name, cls, seq_len, forecast in ndd_configs:
@@ -354,7 +356,6 @@ def analyze_spread(model, prob_data, prob_times, threshold, onset_labels, model_
     
     return result
 
-
 # ==============================================================================
 # MAIN PIPELINE
 # ==============================================================================
@@ -371,8 +372,8 @@ def main():
     seizures_df = pd.read_csv(ospj(metapath, "metadata_v7_BIDS.csv"))
     seizures_df = seizures_df[seizures_df.split == 1]
     seizures_df[['notes','source']] = seizures_df[['notes','source']].fillna('')
-    seizures_df = seizures_df[seizures_df.notes.apply(lambda x: 'nina' not in x.lower())]
-    seizures_df = seizures_df[seizures_df.source.apply(lambda x: 'nina' not in x.lower())]
+    # seizures_df = seizures_df[seizures_df.notes.apply(lambda x: 'nina' not in x.lower())]
+    # seizures_df = seizures_df[seizures_df.source.apply(lambda x: 'nina' not in x.lower())]
     
     # Get all model configurations
     all_models = get_all_models()
@@ -441,9 +442,6 @@ def main():
                         onset_labels, model_config
                     )
                     
-                    if spread_metrics is None:
-                        continue
-                    
                     # Compile result dictionary
                     result_dict = {
                         'patient': patient,
@@ -455,29 +453,32 @@ def main():
                         'threshold_metric': FILE_KEY,
                         'threshold': threshold,
                     }
-                    
-                    # Add type-specific fields
-                    if model_config['type'] == 'ndd':
-                        result_dict.update({
-                            'metric': model_config['metric'],
-                            'sequence_length': model_config['sequence_length'],
-                            'forecast_length': model_config['forecast_length'],
-                        })
+
+                    if spread_metrics is not None:
+                        # Add type-specific fields
+                        if model_config['type'] == 'ndd':
+                            result_dict.update({
+                                'metric': model_config['metric'],
+                                'sequence_length': model_config['sequence_length'],
+                                'forecast_length': model_config['forecast_length'],
+                            })
+                        else:
+                            result_dict.update({
+                                'sequence_length': np.nan,
+                                'forecast_length': np.nan,
+                            })
+                        
+                        # Add spread metrics
+                        result_dict.update(spread_metrics)
                     else:
-                        result_dict.update({
-                            'sequence_length': np.nan,
-                            'forecast_length': np.nan,
-                        })
-                    
-                    # Add spread metrics
-                    result_dict.update(spread_metrics)
-                    
+                        print(f"Warning: No spread metrics found for {patient} {onset_run} {key}")
                     all_spread_results.append(result_dict)
 
             if model_config['type'] == 'ndd':
                 model = create_model(model_config, num_channels=len(prob_data.columns))
-                first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
-                threshold = model.get_threshold(prob_data.iloc[first_onset_idx:,:], method='automedian')
+                # first_onset_idx = int(np.argmin(np.abs(prob_times - 180)))
+                offset_idx = int(np.argmin(np.abs(prob_times - (prob_times.max() - 120))))
+                threshold = model.get_threshold(prob_data.iloc[:offset_idx,:], method='automedian')
                 spread_metrics = analyze_spread(
                     model, prob_data.copy(), prob_times, threshold, 
                     onset_labels, model_config
@@ -488,16 +489,18 @@ def main():
                     'model': key,
                     'model_name': model_config['name'],
                     'model_type': model_config['type'],
-                    'aggregation': 'median',
+                    'aggregation': 'automedian',
                     'threshold_metric': 'tau',
                     'threshold': threshold,
                     'metric': model_config['metric'],
                     'sequence_length': model_config['sequence_length'],
                     'forecast_length': model_config['forecast_length'],
                 }
-                result_dict.update(spread_metrics)
+                if spread_metrics is not None:
+                    result_dict.update(spread_metrics)
+                else:
+                    print(f"Warning: No spread metrics found for {patient} {onset_run} {key}")
                 all_spread_results.append(result_dict)
-
     # Save all results to single file
     if all_spread_results:
         results_df = pd.DataFrame(all_spread_results)
@@ -510,7 +513,6 @@ def main():
         print(f"{'='*80}")
     else:
         print("No results to save")
-
 
 if __name__ == "__main__":
     main()

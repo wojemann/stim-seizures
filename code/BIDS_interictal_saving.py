@@ -58,9 +58,10 @@ def main():
         # Throwing error because there are no seizures that exist for this patient. So one option would be to save BIDS IEEGIDs into the config and access that from there.
         ieegid = int(seizures_df.loc[seizures_df.IEEGname == ieeg_name,'IEEGID'].mode())
         # get bids path
+        # Zero-pad run number to 2 digits for BIDS compliance (e.g., 0 -> '00', 1 -> '01')
         clip_bids_path = bids_path.copy().update(
             subject=pt,
-            run=ieegid,
+            run=f"{ieegid:02d}",
             task=f"interictal{int(onset)}",
         )
 

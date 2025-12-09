@@ -23,6 +23,8 @@ plt.rcParams['ytick.major.width'] = 2
 plt.rcParams['xtick.minor.width'] = 1
 plt.rcParams['ytick.minor.width'] = 1
 plt.rcParams['legend.frameon'] = False
+# plt.rcParams['font.family'] = 'sans-serif'
+# plt.rcParams['font.sans-serif'] = ['Verdana']
 
 class Config:
     # Hardcoded paths

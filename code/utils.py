@@ -762,12 +762,30 @@ def get_data_from_bids(root,subject,task_key,run=None,return_path=False,verbose=
 
     # Should be just one run per task
     if run is None:
-        run = mne_bids.get_entity_vals(root, 'run', 
+        all_runs = mne_bids.get_entity_vals(root, 'run', 
                                     ignore_tasks = ignore_tasks,
-                                    ignore_subjects=ignore_subjects)[0]
+                                    ignore_subjects=ignore_subjects)
+        if len(all_runs) == 0:
+            raise ValueError(f"No run values found for subject {subject}, task {task}")
+        
+        run = all_runs[0]
     
-    bidspath = BIDSPath(root=root,subject=subject,task=task,run=run,session='clinical01')
-    data_raw = read_raw_bids(bidspath,verbose=verbose)
+    from pathlib import Path
+    import mne
+    
+    if len(run) == 1:
+        run_padded = f'0{run}'
+    else:
+        run_padded = run
+    
+    actual_file = Path(root) / f"sub-{subject}" / "ses-clinical01" / "ieeg" / f"sub-{subject}_ses-clinical01_task-{task}_run-{run_padded}_ieeg.edf"
+    
+    if actual_file.exists():
+        data_raw = mne.io.read_raw_edf(str(actual_file), verbose=verbose, preload=False)
+        run = run_padded
+    else:
+        bidspath = BIDSPath(root=root,subject=subject,task=task,run=run,session='clinical01')
+        data_raw = read_raw_bids(bidspath,verbose=verbose)
     data_df = data_raw.to_data_frame()
     fs = 1/data_df.time.diff().mode().item()
     if return_path:

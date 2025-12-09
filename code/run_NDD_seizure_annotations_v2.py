@@ -755,7 +755,7 @@ def main():
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"metadata_v7_BIDS.csv"))
     seizures_df = seizures_df[(seizures_df.stim == 0)]
-    seizures_df = seizures_df[seizures_df.split == 1]
+    seizures_df = seizures_df[seizures_df.split == 0]
     # seizures_df = seizures_df[seizures_df.split == 1] # Filter for only seizures that have soft onset labels
     
     # Detection parameters
@@ -765,19 +765,19 @@ def main():
     all_models = [
         
         # LiNDDA MODELS
-        {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
-        {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
+        # {'model': LiNDDA, 'sequence_length': 1, 'forecast_length': 1},
+        # {'model': LiNDDA, 'sequence_length': 2, 'forecast_length': 1},
         {'model': LiNDDA, 'sequence_length': 3, 'forecast_length': 2},
-        {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 3},
-        {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
+        # {'model': LiNDDA, 'sequence_length': 4, 'forecast_length': 3},
+        # {'model': LiNDDA, 'sequence_length': 5, 'forecast_length': 4},
         # {'model': LiNDDA, 'sequence_length': 6, 'forecast_length': 5},
         # {'model': LiNDDA, 'sequence_length': 7, 'forecast_length': 6},
         # {'model': LiNDDA, 'sequence_length': 8, 'forecast_length': 7},
         
         # GIN MODELS
         # {'model': GIN, 'sequence_length': 4, 'forecast_length': 1},
-        {'model': GIN, 'sequence_length': 8, 'forecast_length': 1},
-        {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 8, 'forecast_length': 1},
+        # {'model': GIN, 'sequence_length': 12, 'forecast_length': 1},
 
         # NDD Models
         {'model': NDD, 'sequence_length': 12, 'forecast_length': 1},
@@ -825,7 +825,7 @@ def main():
 
     result_df = pd.DataFrame(flat_results)
     print(result_df)
-    result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v8.csv"),index=False)
+    # result_df.to_csv(ospj(prodatapath,f"ndd_model_validation_results_v8.csv"),index=False)
 
 if __name__ == "__main__":
     main()

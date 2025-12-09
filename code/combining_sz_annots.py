@@ -22,21 +22,21 @@ datapath, prodatapath, figpath, metapath = Config.deal(['datapath', 'prodatapath
 #     'suffix': '',
 #     'metric': 'mse'
 # }
-model_dict = {
-    'model_name': 'LiNDDA', 
-    'sequence_length': 5, 
-    'forecast_length': 4, 
-    'suffix': '',
-    'metric': 'mse'
-}
 # model_dict = {
-#     'model_name': 'WVNT',
-#     'sequence_length': None,
-#     'forecast_length': None,
+#     'model_name': 'LiNDDA', 
+#     'sequence_length': 3, 
+#     'forecast_length': 2, 
 #     'suffix': '',
-#     'metric': 'prob'
+#     'metric': 'mse'
 # }
-threshold_agg = 'median'
+model_dict = {
+    'model_name': 'WVNT',
+    'sequence_length': None,
+    'forecast_length': None,
+    'suffix': '',
+    'metric': 'prob'
+}
+threshold_agg = 'mean'
 thresh_str = f'pretrained_{threshold_agg}'
 
 # Initialize an empty list to collect each row for the final DataFrame
@@ -123,8 +123,6 @@ for _, row in pbar:
         seizing_times_ch = spread_ch_df.iloc[1, :]
         
         # Fill nan values
-        if np.isnan(seizing_times_ch).sum() > 0:
-            print('check')
         seizing_times_ch[np.isnan(seizing_times_ch)] = np.inf
         
         # Load channel-level spread instance

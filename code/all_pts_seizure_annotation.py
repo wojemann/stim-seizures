@@ -74,7 +74,7 @@ def plot_seizure_spread(sz_prob, sz_spread, onset_idx, offset_idx, threshold,
 
 
 thresh_str = 'pretrained'
-threshold_agg = 'median'
+threshold_agg = 'mean'
 datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
 seizure_df = pd.read_csv(ospj(metapath, 'metadata_v7_BIDS.csv'))
 seizure_df = seizure_df[seizure_df.stim == 0]
@@ -87,22 +87,22 @@ seizure_df = seizure_df[seizure_df.stim == 0]
 #     'suffix': '',
 #     'metric': 'mse'
 # }
-model_dict = {
-    'model': LiNDDA, 
-    'model_name': 'LiNDDA', 
-    'sequence_length': 5, 
-    'forecast_length': 4, 
-    'suffix': '',
-    'metric': 'mse'
-}
 # model_dict = {
-#     'model': WVNT,
-#     'model_name': 'WVNT',
-#     'sequence_length': None,
-#     'forecast_length': None,
+#     'model': LiNDDA, 
+#     'model_name': 'LiNDDA', 
+#     'sequence_length': 3, 
+#     'forecast_length': 2, 
 #     'suffix': '',
 #     'metric': 'mse'
 # }
+model_dict = {
+    'model': WVNT,
+    'model_name': 'WVNT',
+    'sequence_length': None,
+    'forecast_length': None,
+    'suffix': '',
+    'metric': 'mse'
+}
 
 # Process each patient/seizure
 pbar = tqdm(seizure_df.iterrows(), total=len(seizure_df))
@@ -132,6 +132,7 @@ for _,row in pbar:
         # Load probability matrix
         sz_prob = pd.read_pickle(sz_path)
         sz_prob_times = sz_prob.pop('time').values  # Convert to numpy array for indexing
+        sz_prob_times[np.isnan(sz_prob_times)] = max(sz_prob_times) + 0.5
         
         # Initialize model and get threshold
 

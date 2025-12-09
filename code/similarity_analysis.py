@@ -24,8 +24,8 @@ datapath, prodatapath, figpath, metapath = Config.deal(['datapath', 'prodatapath
 # }
 # model_dict = {
 #     'model_name': 'LiNDDA', 
-#     'sequence_length': 5, 
-#     'forecast_length': 4, 
+#     'sequence_length': 3, 
+#     'forecast_length': 2, 
 #     'suffix': '',
 #     'metric': 'mse'
 # }
@@ -38,7 +38,6 @@ model_dict = {
 }
 threshold_agg = 'mean'
 thresh_str = f'pretrained_{threshold_agg}'
-
 
 def dice_score(set1, set2):
     """Compute Dice score between two sets"""

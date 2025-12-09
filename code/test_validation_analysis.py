@@ -20,7 +20,8 @@ import scipy.ndimage
 from utils import clean_labels, load_electrode_localizations
 
 # Sklearn imports
-from sklearn.metrics import matthews_corrcoef, roc_auc_score
+from sklearn.metrics import matthews_corrcoef, roc_auc_score, precision_recall_curve
+from sklearn.metrics import auc as sklearn_auc
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -248,10 +249,10 @@ def calculate_inter_rater_reliability(annotators, all_labels):
 
 
 def calculate_auc_and_probs(sz_prob, onset_mask, spread_mask, onset_idx, spread_idx):
-    """Calculate AUC and average probabilities without thresholding"""
+    """Calculate AUC, AUPRC, and average probabilities without thresholding"""
     # Calculate onset metrics
     if np.any(onset_mask):
-        # Average probabilities at onset window (5 timepoints)
+        # Average probabilities at onset window (2 timepoints)
         avg_onset_soz_prob = np.mean(sz_prob[onset_mask, onset_idx:onset_idx+2])
         avg_onset_nsoz_prob = np.mean(sz_prob[~onset_mask, onset_idx:onset_idx+2])
         
@@ -261,14 +262,28 @@ def calculate_auc_and_probs(sz_prob, onset_mask, spread_mask, onset_idx, spread_
             onset_auc = roc_auc_score(onset_mask, onset_pred)
         except:
             onset_auc = np.nan
+        
+        # Calculate AUPRC for onset
+        try:
+            precision_vals, recall_vals, _ = precision_recall_curve(onset_mask, onset_pred)
+            onset_auprc_raw = sklearn_auc(recall_vals, precision_vals)
+            
+            # Calculate normalized AUPRC
+            baseline = np.sum(onset_mask) / len(onset_mask)  # Fraction of positive samples
+            onset_auprc_normalized = (onset_auprc_raw - baseline) / (1 - baseline) if baseline < 1 else np.nan
+        except:
+            onset_auprc_raw = np.nan
+            onset_auprc_normalized = np.nan
     else:
         avg_onset_soz_prob = np.nan
         avg_onset_nsoz_prob = np.nan
         onset_auc = np.nan
+        onset_auprc_raw = np.nan
+        onset_auprc_normalized = np.nan
     
     # Calculate spread metrics
     if np.any(spread_mask):
-        # Average probabilities at spread window (5 timepoints)
+        # Average probabilities at spread window (2 timepoints)
         avg_spread_soz_prob = np.mean(sz_prob[spread_mask, spread_idx:spread_idx+2])
         avg_spread_nsoz_prob = np.mean(sz_prob[~spread_mask, spread_idx:spread_idx+2])
         
@@ -278,17 +293,35 @@ def calculate_auc_and_probs(sz_prob, onset_mask, spread_mask, onset_idx, spread_
             spread_auc = roc_auc_score(spread_mask, spread_pred)
         except:
             spread_auc = np.nan
+        
+        # Calculate AUPRC for spread
+        try:
+            precision_vals, recall_vals, _ = precision_recall_curve(spread_mask, spread_pred)
+            spread_auprc_raw = sklearn_auc(recall_vals, precision_vals)
+            
+            # Calculate normalized AUPRC
+            baseline = np.sum(spread_mask) / len(spread_mask)  # Fraction of positive samples
+            spread_auprc_normalized = (spread_auprc_raw - baseline) / (1 - baseline) if baseline < 1 else np.nan
+        except:
+            spread_auprc_raw = np.nan
+            spread_auprc_normalized = np.nan
     else:
         avg_spread_soz_prob = np.nan
         avg_spread_nsoz_prob = np.nan
         spread_auc = np.nan
+        spread_auprc_raw = np.nan
+        spread_auprc_normalized = np.nan
     
-    return avg_onset_soz_prob, avg_onset_nsoz_prob, onset_auc, avg_spread_soz_prob, avg_spread_nsoz_prob, spread_auc
+    return (avg_onset_soz_prob, avg_onset_nsoz_prob, onset_auc, onset_auprc_raw, onset_auprc_normalized,
+            avg_spread_soz_prob, avg_spread_nsoz_prob, spread_auc, spread_auprc_raw, spread_auprc_normalized)
 
 
-def find_optimal_phi_threshold(sz_prob, prob_chs, window_idx, all_chs, consensus_labels, annotators):
+def find_optimal_phi_threshold(sz_prob, prob_chs, window_idx, all_chs, consensus_labels, annotators, tolerance=0.01):
     """
-    Find optimal threshold for Phi by testing unique probability values.
+    Find optimal threshold for Phi using plateau methodology.
+    
+    This method finds thresholds within tolerance of the best score, groups them into
+    continuous plateaus, and selects the midpoint of the longest plateau for better generalization.
     
     Parameters:
     -----------
@@ -304,23 +337,28 @@ def find_optimal_phi_threshold(sz_prob, prob_chs, window_idx, all_chs, consensus
         Boolean array of consensus labels
     annotators : list
         List of boolean arrays, one per annotator
+    tolerance : float
+        Score tolerance for plateau detection (default: 0.01)
     
     Returns:
     --------
     dict with optimal_threshold, max_phi, phi_annotators, unique_probs, phi_curve
     """
     
-    # Get unique probability values as candidate thresholds from the window
-    unique_probs = np.unique(sz_prob[:, window_idx:window_idx+5])
+    # Get average probabilities over the window for threshold evaluation
+    window_probs = sz_prob[:, window_idx:window_idx+5].mean(axis=1)
+    
+    # Use linear space of thresholds between 5th and 99th percentiles (like plateau method)
+    min_prob = np.percentile(window_probs, 5)
+    max_prob = np.percentile(window_probs, 99)
+    thresholds = np.linspace(min_prob, max_prob, 301)
     
     phi_vals = []
     phi_per_annotator = {i: [] for i in range(len(annotators))}
     
-    for threshold in unique_probs:
-        # Get predictions at this window (at least 4/5 timepoints above threshold = 80%)
-        # sz_clf = sz_prob > threshold
-        # window_idx_pred = np.sum(sz_clf[:, window_idx:window_idx+5], axis=1) >= 4
-        window_idx_pred = sz_prob[:, window_idx:window_idx+5].mean(axis=1) > threshold
+    for threshold in thresholds:
+        # Get predictions at this window (mean probability above threshold)
+        window_idx_pred = window_probs > threshold
         predicted_chs = prob_chs[window_idx_pred] if np.any(window_idx_pred) else np.array([])
         
         # Calculate phi with consensus
@@ -334,12 +372,43 @@ def find_optimal_phi_threshold(sz_prob, prob_chs, window_idx, all_chs, consensus
     
     phi_vals = np.array(phi_vals)
     
-    # Find optimal threshold
+    # Find optimal threshold using plateau methodology
     if np.any(~np.isnan(phi_vals)):
-        optimal_idx = np.nanargmax(phi_vals)
-        optimal_threshold = unique_probs[optimal_idx]
-        max_phi = phi_vals[optimal_idx]
-        phi_annotators = [phi_per_annotator[i][optimal_idx] for i in range(len(annotators))]
+        best_score = np.nanmax(phi_vals)
+        
+        # Find all thresholds within tolerance of best score
+        within_tolerance = phi_vals >= (best_score - tolerance)
+        candidate_indices = np.where(within_tolerance)[0]
+        
+        if len(candidate_indices) == 0:
+            # Fallback to best score if no candidates
+            optimal_idx = np.nanargmax(phi_vals)
+            optimal_threshold = thresholds[optimal_idx]
+            max_phi = phi_vals[optimal_idx]
+            phi_annotators = [phi_per_annotator[i][optimal_idx] for i in range(len(annotators))]
+        else:
+            # Group into continuous segments (plateaus)
+            segments = []
+            current_segment = [candidate_indices[0]]
+            
+            for i in range(1, len(candidate_indices)):
+                if candidate_indices[i] == candidate_indices[i-1] + 1:
+                    # Continuous
+                    current_segment.append(candidate_indices[i])
+                else:
+                    # Gap found, start new segment
+                    segments.append(current_segment)
+                    current_segment = [candidate_indices[i]]
+            segments.append(current_segment)  # Add last segment
+            
+            # Find longest continuous plateau
+            longest_segment = max(segments, key=len)
+            
+            # Take midpoint of longest plateau
+            mid_idx = longest_segment[len(longest_segment) // 2]
+            optimal_threshold = thresholds[mid_idx]
+            max_phi = phi_vals[mid_idx]
+            phi_annotators = [phi_per_annotator[i][mid_idx] for i in range(len(annotators))]
     else:
         optimal_threshold = np.nan
         max_phi = np.nan
@@ -349,7 +418,7 @@ def find_optimal_phi_threshold(sz_prob, prob_chs, window_idx, all_chs, consensus
         'optimal_threshold': optimal_threshold,
         'max_phi': max_phi,
         'phi_annotators': phi_annotators,
-        'unique_probs': unique_probs,
+        'unique_probs': thresholds,
         'phi_curve': phi_vals
     }
 
@@ -426,8 +495,8 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
     metrics = {}
     
     # Channel-level AUC and probabilities
-    avg_onset_soz_prob, avg_onset_nsoz_prob, onset_auc, \
-    avg_spread_soz_prob, avg_spread_nsoz_prob, spread_auc = calculate_auc_and_probs(
+    (avg_onset_soz_prob, avg_onset_nsoz_prob, onset_auc, onset_auprc_raw, onset_auprc_normalized,
+     avg_spread_soz_prob, avg_spread_nsoz_prob, spread_auc, spread_auprc_raw, spread_auprc_normalized) = calculate_auc_and_probs(
         sz_prob_smooth, onset_mask, spread_mask, onset_idx, spread_idx
     )
     
@@ -435,9 +504,13 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
         'avg_onset_soz_prob': avg_onset_soz_prob,
         'avg_onset_nsoz_prob': avg_onset_nsoz_prob,
         'onset_auc': onset_auc,
+        'onset_auprc_raw': onset_auprc_raw,
+        'onset_auprc_normalized': onset_auprc_normalized,
         'avg_spread_soz_prob': avg_spread_soz_prob,
         'avg_spread_nsoz_prob': avg_spread_nsoz_prob,
         'spread_auc': spread_auc,
+        'spread_auprc_raw': spread_auprc_raw,
+        'spread_auprc_normalized': spread_auprc_normalized,
     })
     
     # Optimal thresholds for Phi
@@ -461,18 +534,22 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
     })
     
     # Phi at learned thresholds
-    for metric_name in ['phi', 'f1', 'iou','tau']:
-        learned_thresh = learned_thresholds_dict.get(metric_name, np.nan)
+    # Handle both old format (metric_name) and new format (metric_name_aggregation)
+    for threshold_key, learned_thresh in learned_thresholds_dict.items():
+        if np.isnan(learned_thresh):
+            continue
+            
         phi_at_learned = calculate_phi_at_threshold(
             sz_prob_smooth, prob_chs, onset_idx, spread_idx,
             all_chs, ueo_consensus, sec_consensus,
             ueo_annotators, sec_annotators, learned_thresh
         )
         
-        metrics[f'learned_{metric_name}_threshold'] = learned_thresh
-        metrics[f'onset_phi_at_learned_{metric_name}'] = phi_at_learned['onset_phi']
-        metrics[f'spread_phi_at_learned_{metric_name}'] = phi_at_learned['spread_phi']
-        metrics[f'onset_phi_annotators_at_learned_{metric_name}'] = phi_at_learned['onset_phi_annotators']
+        # Use the threshold_key as the identifier (e.g., 'f1_mean', 'phi_median', 'tau')
+        metrics[f'learned_{threshold_key}_threshold'] = learned_thresh
+        metrics[f'onset_phi_at_learned_{threshold_key}'] = phi_at_learned['onset_phi']
+        metrics[f'spread_phi_at_learned_{threshold_key}'] = phi_at_learned['spread_phi']
+        metrics[f'onset_phi_annotators_at_learned_{threshold_key}'] = phi_at_learned['onset_phi_annotators']
     
     # Region-level analysis
     if ch_to_region is not None and onset_labels_regions is not None:
@@ -495,8 +572,10 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
             spread_mask_regions = np.array([r in spread_labels_regions for r in region_names])
             
             # Region AUC and probabilities
-            region_avg_onset_soz_prob, region_avg_onset_nsoz_prob, region_onset_auc, \
-            region_avg_spread_soz_prob, region_avg_spread_nsoz_prob, region_spread_auc = calculate_auc_and_probs(
+            (region_avg_onset_soz_prob, region_avg_onset_nsoz_prob, region_onset_auc, 
+             region_onset_auprc_raw, region_onset_auprc_normalized,
+             region_avg_spread_soz_prob, region_avg_spread_nsoz_prob, region_spread_auc,
+             region_spread_auprc_raw, region_spread_auprc_normalized) = calculate_auc_and_probs(
                 region_prob_matrix, onset_mask_regions, spread_mask_regions, onset_idx, spread_idx
             )
             
@@ -517,9 +596,10 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
             
             # Region Phi at learned thresholds
             region_phi_at_learned = {}
-            for metric_name in ['phi', 'f1', 'iou','tau']:
-                learned_thresh = learned_thresholds_dict.get(metric_name, np.nan)
-                region_phi_at_learned[metric_name] = calculate_phi_at_threshold(
+            for threshold_key, learned_thresh in learned_thresholds_dict.items():
+                if np.isnan(learned_thresh):
+                    continue
+                region_phi_at_learned[threshold_key] = calculate_phi_at_threshold(
                     region_prob_matrix, region_names, onset_idx, spread_idx,
                     region_names, ueo_consensus_regions_bool, sec_consensus_regions_bool,
                     ueo_annotators_regions_bool, sec_annotators_regions_bool, learned_thresh
@@ -531,9 +611,13 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
                 'region_avg_onset_soz_prob': region_avg_onset_soz_prob,
                 'region_avg_onset_nsoz_prob': region_avg_onset_nsoz_prob,
                 'region_onset_auc': region_onset_auc,
+                'region_onset_auprc_raw': region_onset_auprc_raw,
+                'region_onset_auprc_normalized': region_onset_auprc_normalized,
                 'region_avg_spread_soz_prob': region_avg_spread_soz_prob,
                 'region_avg_spread_nsoz_prob': region_avg_spread_nsoz_prob,
                 'region_spread_auc': region_spread_auc,
+                'region_spread_auprc_raw': region_spread_auprc_raw,
+                'region_spread_auprc_normalized': region_spread_auprc_normalized,
                 'region_optimal_onset_threshold': region_optimal_onset_results['optimal_threshold'],
                 'region_max_onset_phi': region_optimal_onset_results['max_phi'],
                 'region_onset_phi_annotators_at_optimal': region_optimal_onset_results['phi_annotators'],
@@ -542,10 +626,10 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
                 'region_spread_phi_annotators_at_optimal': region_optimal_spread_results['phi_annotators'],
             })
             
-            for metric_name in ['phi', 'f1', 'iou','tau']:
-                metrics[f'region_onset_phi_at_learned_{metric_name}'] = region_phi_at_learned[metric_name]['onset_phi']
-                metrics[f'region_spread_phi_at_learned_{metric_name}'] = region_phi_at_learned[metric_name]['spread_phi']
-                metrics[f'region_onset_phi_annotators_at_learned_{metric_name}'] = region_phi_at_learned[metric_name]['onset_phi_annotators']
+            for threshold_key in region_phi_at_learned.keys():
+                metrics[f'region_onset_phi_at_learned_{threshold_key}'] = region_phi_at_learned[threshold_key]['onset_phi']
+                metrics[f'region_spread_phi_at_learned_{threshold_key}'] = region_phi_at_learned[threshold_key]['spread_phi']
+                metrics[f'region_onset_phi_annotators_at_learned_{threshold_key}'] = region_phi_at_learned[threshold_key]['onset_phi_annotators']
         else:
             # Empty region results
             metrics.update(_empty_region_metrics())
@@ -557,32 +641,30 @@ def calculate_all_metrics(sz_prob_smooth, prob_chs, onset_idx, spread_idx,
 
 def _empty_region_metrics():
     """Return dict of NaN region metrics"""
-    return {
+    # Base metrics that are always present
+    base_metrics = {
         'region_onset_inter_rater_reliability': np.nan,
         'region_spread_inter_rater_reliability': np.nan,
         'region_avg_onset_soz_prob': np.nan,
         'region_avg_onset_nsoz_prob': np.nan,
         'region_onset_auc': np.nan,
+        'region_onset_auprc_raw': np.nan,
+        'region_onset_auprc_normalized': np.nan,
         'region_avg_spread_soz_prob': np.nan,
         'region_avg_spread_nsoz_prob': np.nan,
         'region_spread_auc': np.nan,
+        'region_spread_auprc_raw': np.nan,
+        'region_spread_auprc_normalized': np.nan,
         'region_optimal_onset_threshold': np.nan,
         'region_max_onset_phi': np.nan,
         'region_onset_phi_annotators_at_optimal': [],
         'region_optimal_spread_threshold': np.nan,
         'region_max_spread_phi': np.nan,
         'region_spread_phi_annotators_at_optimal': [],
-        'region_onset_phi_at_learned_phi': np.nan,
-        'region_spread_phi_at_learned_phi': np.nan,
-        'region_onset_phi_annotators_at_learned_phi': [],
-        'region_onset_phi_at_learned_f1': np.nan,
-        'region_spread_phi_at_learned_f1': np.nan,
-        'region_onset_phi_annotators_at_learned_f1': [],
-        'region_onset_phi_at_learned_iou': np.nan,
-        'region_spread_phi_at_learned_iou': np.nan,
-        'region_onset_phi_annotators_at_learned_iou': [],
     }
-
+    # Note: Learned threshold metrics are added dynamically based on what's in learned_thresholds_dict
+    # so we don't need to pre-populate them here
+    return base_metrics
 
 def generate_example_figure(sz_prob, prob_chs, onset_idx, all_chs,
                            ueo_consensus, ueo_annotators, figpath):
@@ -600,16 +682,16 @@ def generate_example_figure(sz_prob, prob_chs, onset_idx, all_chs,
     max_phi = results['max_phi']
     
     if np.any(~np.isnan(phi_vals)):
-        fig, ax = plt.subplots(figsize=(3, 3))
+        fig, ax = plt.subplots(figsize=(2.5, 2.5))
         ax.plot(unique_probs, phi_vals, 
-               color=sns.color_palette('spring_r', n_colors=3)[0],
+               color='#ff7f00',#sns.color_palette('spring_r', n_colors=3)[0],
                linewidth=4)
         
         # Mark optimal threshold
         ax.plot([optimal_threshold]*2, 
                [0, max_phi], 
                '--o', c='purple',
-               markersize=15,
+               markersize=12,
                linewidth=4,
                markevery=[1],
                fillstyle='none',
@@ -617,8 +699,8 @@ def generate_example_figure(sz_prob, prob_chs, onset_idx, all_chs,
         
         ax.set_ylabel('Agreement ($\phi$)')
         ax.set_xlabel('Threshold')
-        # ax.set_ylim([-0.2, 1.1])
-        ax.set_xlim([np.min(unique_probs), 1])
+        ax.set_ylim([-0.05, 1])
+        ax.set_xlim([np.min(unique_probs), np.max(unique_probs)])
         sns.despine()
         
         fig_path = ospj(figpath, 'threshold_tune_example_test.pdf')
@@ -635,33 +717,32 @@ def main():
     # Load seizure metadata
     seizures_df = pd.read_csv(ospj(metapath, "metadata_v7_BIDS.csv"))
     seizures_df = seizures_df[(seizures_df.split == 2) & (seizures_df.stim == 0)]
-    
+    # seizures_df = seizures_df[seizures_df.Patient == 'HUP238']
+    # seizures_df = seizures_df[seizures_df.onset.astype(int) == 290006]
     print(f"Found {len(seizures_df)} test seizures")
     
     # Load clinical annotations
     annotations_df = pd.read_pickle(ospj(prodatapath, "threshold_tuning_consensus_v3.pkl"))
     annotations_df = annotations_df[annotations_df.stim == 0]
-    # Load learned thresholds   
-    ndd_thresholds = {}
-    benchmark_thresholds = {}
-    thresholds_type = 'mean'
     
-    for metric in ['phi', 'f1', 'iou']:
-        try:
-            ndd_thresh_df = pd.read_csv(ospj(prodatapath, f"ndd_val_thresholds_{metric}_v3.csv"))
-            ndd_thresholds[metric] = dict(zip(ndd_thresh_df.model, ndd_thresh_df[f'{metric}_threshold']))
-        except:
-            print(f"Warning: Could not load ndd_val_thresholds_{metric}_v3.csv")
-            ndd_thresholds[metric] = {}
-        
-        try:
-            bench_thresh_df = pd.read_csv(ospj(prodatapath, f"benchmark_val_thresholds_{metric}.csv"))
-            benchmark_thresholds[metric] = dict(zip(bench_thresh_df.model, bench_thresh_df[f'{metric}_threshold']))
-        except:
-            print(f"Warning: Could not load benchmark_val_thresholds_{metric}.csv")
-            benchmark_thresholds[metric] = {}
-    thresholds = pd.read_csv(ospj(prodatapath, 'all_thresholds_v5.csv'))
-    ndd_thresholds = dict(zip(thresholds.model, thresholds))
+    # Load all thresholds from v6 file only
+    thresholds_path = ospj(prodatapath, 'all_thresholds_v6.csv')
+    if not os.path.exists(thresholds_path):
+        raise FileNotFoundError(f"Could not find all_thresholds_v6.csv in {prodatapath}")
+    thresholds_df = pd.read_csv(thresholds_path)
+    print(f"Loaded thresholds from all_thresholds_v6.csv")
+    
+    # Pre-build threshold lookup dictionary for faster access
+    # Structure: {(metric, aggregation, model): threshold}
+    threshold_lookup = {}
+    for _, row in thresholds_df.iterrows():
+        key = (row['metric'], row['aggregation'], row['model'])
+        threshold_lookup[key] = row['threshold']
+    
+    # Define threshold metrics to process
+    THRESHOLD_METRICS = ['f1', 'iou', 'phi', 'f1_plateau', 'phi_plateau']
+    # Process both mean and median aggregations
+    AGGREGATIONS = ['mean', 'median']
     # Model configurations
     ndd_models = [
         {'model': LiNDDA, 'model_name': 'LiNDDA', 'sequence_length': 1, 'forecast_length': 1, 'metric': 'mse', 'suffix': ''},
@@ -783,6 +864,7 @@ def main():
                 continue
             
             prob_times = prob_data.pop('time').values
+            prob_times[np.isnan(prob_times)] = np.max(prob_times[~np.isnan(prob_times)])+0.5
             prob_chs_raw = prob_data.columns.to_numpy()
             sz_prob = prob_data.to_numpy().T
             
@@ -795,26 +877,38 @@ def main():
             spread_idx = int(np.argmin(np.abs((prob_times - 190) + time_diff)))
             offset_idx = int(np.argmin(np.abs((prob_times - (np.max(prob_times)-120)) + time_diff)))
             
-            # Extract first contacts and create masks
-            if model_type == 'ndd':
-                prob_chs = np.array([ch.split('-')[0] for ch in prob_chs_raw])
-                onset_mask = np.array([ch in onset_labels for ch in prob_chs])
-                spread_mask = np.array([ch in spread_labels for ch in prob_chs])
-                full_model_key = f"{model_name}_mse_sl{prob_info['sequence_length']}_fl{prob_info['forecast_length']}"
-                model_thresholds = thresholds.loc[thresholds.model == full_model_key]
-                learned_thresholds_dict = dict(zip(model_thresholds['metric'] + '_' + model_thresholds['aggregation'],model_thresholds['threshold']))
-                learned_thresholds_dict['tau'] = model.get_threshold(pd.DataFrame(sz_prob_smooth.T,columns=prob_chs_raw),method='automedian')
+            # Extract first contacts and create masks (same logic for both types)
+            prob_chs = np.array([ch.split('-')[0] for ch in prob_chs_raw])
+            onset_mask = np.array([ch in onset_labels for ch in prob_chs])
+            spread_mask = np.array([ch in spread_labels for ch in prob_chs])
             
+            if model_type == 'ndd':
+                full_model_key = f"{model_name}_mse_sl{prob_info['sequence_length']}_fl{prob_info['forecast_length']}"
             else:  # benchmark
-                prob_chs = np.array([ch.split('-')[0] for ch in prob_chs_raw])
-                onset_mask = np.array([ch in onset_labels for ch in prob_chs])  
-                spread_mask = np.array([ch in spread_labels for ch in prob_chs])
                 full_model_key = model_name
-                model_thresholds = thresholds.loc[thresholds.model == full_model_key]
-                learned_thresholds_dict = dict(zip(model_thresholds['metric'] + '_' + model_thresholds['aggregation'],model_thresholds['threshold']))
-
-            # Calculate all metrics using unified function
-            calculated_metrics = calculate_all_metrics(
+            
+            # Pre-compute all learned thresholds once to avoid repeated threshold optimization
+            learned_thresholds_dict = {}
+            
+            # Collect all thresholds from pre-built lookup dictionary for this model
+            for threshold_metric in THRESHOLD_METRICS:
+                for aggregation in AGGREGATIONS:
+                    key = (threshold_metric, aggregation, full_model_key)
+                    if key in threshold_lookup:
+                        learned_thresholds_dict[f'{threshold_metric}_{aggregation}'] = threshold_lookup[key]
+            
+            # Also add tau threshold for NDD models
+            if model_type == 'ndd':
+                offset_idx = int(np.argmin(np.abs((prob_times - (np.max(prob_times)-120)))))
+                tau_threshold = model.get_threshold(
+                    pd.DataFrame(sz_prob_smooth.T, columns=prob_chs_raw).iloc[:offset_idx,:],
+                    method='automedian'
+                )
+                learned_thresholds_dict['tau'] = tau_threshold
+            
+            # Calculate all metrics once with all learned thresholds
+            # This avoids expensive find_optimal_phi_threshold calls in the loop
+            calculated_metrics_all = calculate_all_metrics(
                 sz_prob_smooth, prob_chs, onset_idx, spread_idx,
                 onset_mask, spread_mask, all_chs,
                 ueo_consensus, sec_consensus, ueo_annotators, sec_annotators,
@@ -823,7 +917,7 @@ def main():
                 ch_to_region, learned_thresholds_dict
             )
             
-            # Create dataframes with probabilities and labels for onset and spread
+            # Create dataframes with probabilities and labels for onset and spread (shared across all thresholds)
             # Average probabilities over the 5-timepoint window
             onset_probs = sz_prob_smooth[:, onset_idx:onset_idx+5].mean(axis=1)
             spread_probs = sz_prob_smooth[:, spread_idx:spread_idx+5].mean(axis=1)
@@ -838,8 +932,8 @@ def main():
                 for ch, prob, label in zip(prob_chs, spread_probs, spread_mask)
             }, index=['probability', 'label'])
             
-            # Store results
-            result_dict = {
+            # Base result dict with shared fields
+            base_result_dict = {
                 'patient': patient,
                 'onset': int(onset_run),
                 'stim': stim,
@@ -854,12 +948,158 @@ def main():
                 'onset_prob_data': onset_prob_data,
                 'spread_prob_data': spread_prob_data,
             }
-            result_dict.update(calculated_metrics)
             
-            results.append(result_dict)
+            # Extract metrics for each threshold metric/aggregation combination
+            for threshold_metric in THRESHOLD_METRICS:
+                for aggregation in AGGREGATIONS:
+                    threshold_key = f'{threshold_metric}_{aggregation}'
+                    
+                    if threshold_key not in learned_thresholds_dict:
+                        continue
+                    
+                    threshold = learned_thresholds_dict[threshold_key]
+                    
+                    # Extract metrics specific to this threshold
+                    result_dict = base_result_dict.copy()
+                    result_dict.update({
+                        'threshold_metric': threshold_metric,
+                        'aggregation': aggregation,
+                        'threshold': threshold,
+                    })
+                    
+                    # Add all shared metrics (optimal thresholds, AUC, etc.)
+                    # These are the same for all threshold metrics since they're computed once
+                    shared_metrics = {
+                        'optimal_onset_threshold': calculated_metrics_all['optimal_onset_threshold'],
+                        'max_onset_phi': calculated_metrics_all['max_onset_phi'],
+                        'onset_phi_annotators_at_optimal': calculated_metrics_all['onset_phi_annotators_at_optimal'],
+                        'optimal_spread_threshold': calculated_metrics_all['optimal_spread_threshold'],
+                        'max_spread_phi': calculated_metrics_all['max_spread_phi'],
+                        'spread_phi_annotators_at_optimal': calculated_metrics_all['spread_phi_annotators_at_optimal'],
+                        'avg_onset_soz_prob': calculated_metrics_all['avg_onset_soz_prob'],
+                        'avg_onset_nsoz_prob': calculated_metrics_all['avg_onset_nsoz_prob'],
+                        'onset_auc': calculated_metrics_all['onset_auc'],
+                        'onset_auprc_raw': calculated_metrics_all['onset_auprc_raw'],
+                        'onset_auprc_normalized': calculated_metrics_all['onset_auprc_normalized'],
+                        'avg_spread_soz_prob': calculated_metrics_all['avg_spread_soz_prob'],
+                        'avg_spread_nsoz_prob': calculated_metrics_all['avg_spread_nsoz_prob'],
+                        'spread_auc': calculated_metrics_all['spread_auc'],
+                        'spread_auprc_raw': calculated_metrics_all['spread_auprc_raw'],
+                        'spread_auprc_normalized': calculated_metrics_all['spread_auprc_normalized'],
+                    }
+                    
+                    # Add region-level metrics if available
+                    if 'region_onset_inter_rater_reliability' in calculated_metrics_all:
+                        shared_metrics.update({
+                            'region_onset_inter_rater_reliability': calculated_metrics_all['region_onset_inter_rater_reliability'],
+                            'region_spread_inter_rater_reliability': calculated_metrics_all['region_spread_inter_rater_reliability'],
+                            'region_avg_onset_soz_prob': calculated_metrics_all['region_avg_onset_soz_prob'],
+                            'region_avg_onset_nsoz_prob': calculated_metrics_all['region_avg_onset_nsoz_prob'],
+                            'region_onset_auc': calculated_metrics_all['region_onset_auc'],
+                            'region_onset_auprc_raw': calculated_metrics_all['region_onset_auprc_raw'],
+                            'region_onset_auprc_normalized': calculated_metrics_all['region_onset_auprc_normalized'],
+                            'region_avg_spread_soz_prob': calculated_metrics_all['region_avg_spread_soz_prob'],
+                            'region_avg_spread_nsoz_prob': calculated_metrics_all['region_avg_spread_nsoz_prob'],
+                            'region_spread_auc': calculated_metrics_all['region_spread_auc'],
+                            'region_spread_auprc_raw': calculated_metrics_all['region_spread_auprc_raw'],
+                            'region_spread_auprc_normalized': calculated_metrics_all['region_spread_auprc_normalized'],
+                            'region_optimal_onset_threshold': calculated_metrics_all['region_optimal_onset_threshold'],
+                            'region_max_onset_phi': calculated_metrics_all['region_max_onset_phi'],
+                            'region_onset_phi_annotators_at_optimal': calculated_metrics_all['region_onset_phi_annotators_at_optimal'],
+                            'region_optimal_spread_threshold': calculated_metrics_all['region_optimal_spread_threshold'],
+                            'region_max_spread_phi': calculated_metrics_all['region_max_spread_phi'],
+                            'region_spread_phi_annotators_at_optimal': calculated_metrics_all['region_spread_phi_annotators_at_optimal'],
+                        })
+                    
+                    result_dict.update(shared_metrics)
+                    
+                    # Add metrics specific to this learned threshold (only if they were calculated)
+                    if f'learned_{threshold_key}_threshold' in calculated_metrics_all:
+                        result_dict[f'learned_{threshold_key}_threshold'] = calculated_metrics_all[f'learned_{threshold_key}_threshold']
+                        result_dict[f'onset_phi_at_learned_{threshold_key}'] = calculated_metrics_all[f'onset_phi_at_learned_{threshold_key}']
+                        result_dict[f'spread_phi_at_learned_{threshold_key}'] = calculated_metrics_all[f'spread_phi_at_learned_{threshold_key}']
+                        result_dict[f'onset_phi_annotators_at_learned_{threshold_key}'] = calculated_metrics_all[f'onset_phi_annotators_at_learned_{threshold_key}']
+                    
+                    # Add region-level metrics for this learned threshold if available
+                    if f'region_onset_phi_at_learned_{threshold_key}' in calculated_metrics_all:
+                        result_dict[f'region_onset_phi_at_learned_{threshold_key}'] = calculated_metrics_all[f'region_onset_phi_at_learned_{threshold_key}']
+                        result_dict[f'region_spread_phi_at_learned_{threshold_key}'] = calculated_metrics_all[f'region_spread_phi_at_learned_{threshold_key}']
+                        result_dict[f'region_onset_phi_annotators_at_learned_{threshold_key}'] = calculated_metrics_all[f'region_onset_phi_annotators_at_learned_{threshold_key}']
+                    
+                    results.append(result_dict)
             
-            # Generate example figure
-            if patient == 'HUP238' and int(onset_run) == 290006 and model_name == 'LiNDDA':
+            # Process tau threshold separately if it exists (for NDD models)
+            if 'tau' in learned_thresholds_dict:
+                tau_threshold = learned_thresholds_dict['tau']
+                
+                result_dict = base_result_dict.copy()
+                result_dict.update({
+                    'threshold_metric': 'tau',
+                    'aggregation': 'automedian',
+                    'threshold': tau_threshold,
+                })
+                
+                # Add all shared metrics
+                shared_metrics = {
+                    'optimal_onset_threshold': calculated_metrics_all['optimal_onset_threshold'],
+                    'max_onset_phi': calculated_metrics_all['max_onset_phi'],
+                    'onset_phi_annotators_at_optimal': calculated_metrics_all['onset_phi_annotators_at_optimal'],
+                    'optimal_spread_threshold': calculated_metrics_all['optimal_spread_threshold'],
+                    'max_spread_phi': calculated_metrics_all['max_spread_phi'],
+                    'spread_phi_annotators_at_optimal': calculated_metrics_all['spread_phi_annotators_at_optimal'],
+                    'avg_onset_soz_prob': calculated_metrics_all['avg_onset_soz_prob'],
+                    'avg_onset_nsoz_prob': calculated_metrics_all['avg_onset_nsoz_prob'],
+                    'onset_auc': calculated_metrics_all['onset_auc'],
+                    'onset_auprc_raw': calculated_metrics_all['onset_auprc_raw'],
+                    'onset_auprc_normalized': calculated_metrics_all['onset_auprc_normalized'],
+                    'avg_spread_soz_prob': calculated_metrics_all['avg_spread_soz_prob'],
+                    'avg_spread_nsoz_prob': calculated_metrics_all['avg_spread_nsoz_prob'],
+                    'spread_auc': calculated_metrics_all['spread_auc'],
+                    'spread_auprc_raw': calculated_metrics_all['spread_auprc_raw'],
+                    'spread_auprc_normalized': calculated_metrics_all['spread_auprc_normalized'],
+                }
+                
+                # Add region-level metrics if available
+                if 'region_onset_inter_rater_reliability' in calculated_metrics_all:
+                    shared_metrics.update({
+                        'region_onset_inter_rater_reliability': calculated_metrics_all['region_onset_inter_rater_reliability'],
+                        'region_spread_inter_rater_reliability': calculated_metrics_all['region_spread_inter_rater_reliability'],
+                        'region_avg_onset_soz_prob': calculated_metrics_all['region_avg_onset_soz_prob'],
+                        'region_avg_onset_nsoz_prob': calculated_metrics_all['region_avg_onset_nsoz_prob'],
+                        'region_onset_auc': calculated_metrics_all['region_onset_auc'],
+                        'region_onset_auprc_raw': calculated_metrics_all['region_onset_auprc_raw'],
+                        'region_onset_auprc_normalized': calculated_metrics_all['region_onset_auprc_normalized'],
+                        'region_avg_spread_soz_prob': calculated_metrics_all['region_avg_spread_soz_prob'],
+                        'region_avg_spread_nsoz_prob': calculated_metrics_all['region_avg_spread_nsoz_prob'],
+                        'region_spread_auc': calculated_metrics_all['region_spread_auc'],
+                        'region_spread_auprc_raw': calculated_metrics_all['region_spread_auprc_raw'],
+                        'region_spread_auprc_normalized': calculated_metrics_all['region_spread_auprc_normalized'],
+                        'region_optimal_onset_threshold': calculated_metrics_all['region_optimal_onset_threshold'],
+                        'region_max_onset_phi': calculated_metrics_all['region_max_onset_phi'],
+                        'region_onset_phi_annotators_at_optimal': calculated_metrics_all['region_onset_phi_annotators_at_optimal'],
+                        'region_optimal_spread_threshold': calculated_metrics_all['region_optimal_spread_threshold'],
+                        'region_max_spread_phi': calculated_metrics_all['region_max_spread_phi'],
+                        'region_spread_phi_annotators_at_optimal': calculated_metrics_all['region_spread_phi_annotators_at_optimal'],
+                    })
+                
+                result_dict.update(shared_metrics)
+                
+                # Add metrics specific to tau threshold
+                result_dict['learned_tau_threshold'] = calculated_metrics_all['learned_tau_threshold']
+                result_dict['onset_phi_at_learned_tau'] = calculated_metrics_all['onset_phi_at_learned_tau']
+                result_dict['spread_phi_at_learned_tau'] = calculated_metrics_all['spread_phi_at_learned_tau']
+                result_dict['onset_phi_annotators_at_learned_tau'] = calculated_metrics_all['onset_phi_annotators_at_learned_tau']
+                
+                # Add region-level metrics for tau if available
+                if 'region_onset_phi_at_learned_tau' in calculated_metrics_all:
+                    result_dict['region_onset_phi_at_learned_tau'] = calculated_metrics_all['region_onset_phi_at_learned_tau']
+                    result_dict['region_spread_phi_at_learned_tau'] = calculated_metrics_all['region_spread_phi_at_learned_tau']
+                    result_dict['region_onset_phi_annotators_at_learned_tau'] = calculated_metrics_all['region_onset_phi_annotators_at_learned_tau']
+                
+                results.append(result_dict)
+            
+            # Generate example figure (only once per model)
+            if patient == 'HUP238' and int(onset_run) == 290006 and model_name == 'LiNDDA' and model_key == 'LiNDDA_mse_sl3_fl2':
                 print(f"\nGenerating example figure for {patient} {onset_run} {model_name}...")
                 generate_example_figure(sz_prob_smooth, prob_chs, onset_idx,
                                       all_chs, ueo_consensus, ueo_annotators, figpath)
@@ -870,7 +1110,7 @@ def main():
         # Save full results as pickle (includes probability dataframes)
         results_df_full = pd.DataFrame(results)
         # pickle_path = ospj(prodatapath, "test_validation_results_nopass_nolayernorm_v3_mean_thresholds.pkl")
-        pickle_path = ospj(prodatapath, "test_validation_results_v4.pkl")
+        pickle_path = ospj(prodatapath, "test_validation_results_v6.pkl")
         results_df_full.to_pickle(pickle_path)
         print(f"Full results (with probability data) saved to {pickle_path}")
         
@@ -885,7 +1125,7 @@ def main():
         
         results_df_csv = pd.DataFrame(results_csv)
         # csv_path = ospj(prodatapath, "test_validation_results_v3_mean_thresholds.csv")
-        csv_path = ospj(prodatapath, "test_validation_results_v4.csv")
+        csv_path = ospj(prodatapath, "test_validation_results_v6.csv")
         results_df_csv.to_csv(csv_path, index=False)
         print(f"CSV results (without probability data) saved to {csv_path}")
         
