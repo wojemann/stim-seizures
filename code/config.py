@@ -31,7 +31,11 @@ class Config:
     prodatapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA" # change to your processed data path
     metapath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/METADATA" # change to your metadata path
     figpath = "/mnt/sauce/littlab/users/wojemann/stim-seizures/figures" # change to your figure path
-    
+    if not ospe(metapath):
+        datapath = "/Users/wojemann/Documents/CNT/stim_seizures_data/RAW_DATA"
+        prodatapath = "/Users/wojemann/Documents/CNT/stim_seizures_data/PROCESSED_DATA"
+        metapath = "/Users/wojemann/Documents/CNT/stim_seizures_data/METADATA"
+        figpath = "/Users/wojemann/Documents/CNT/stim_seizures_data/figures"
     # Patient data
     _patients = [
         {"ptID": "HUP224", "ieeg_ids": ["HUP224_phaseII","HUP224_CCEP"], "interictal_training": ["HUP224_phaseII",5915]},
