@@ -38,7 +38,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.config.experimental import set_memory_growth, list_physical_devices
 import tensorflow as tf
 from absl import logging as absl_logging
-
+from config import Config
 # Suppress TensorFlow logging
 absl_logging.set_verbosity(absl_logging.ERROR)
 tf.get_logger().setLevel('ERROR')
@@ -543,8 +543,7 @@ def main():
             print(e)
     
     # Load configuration and paths
-    _,_,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
-
+    datapath,prodatapath,metapath,figpath,patient_table,rid_hup = Config.deal(['datapath','prodatapath','metapath','figpath','patient_table','rid_hup'])
     # Load seizure metadata from BIDS processing
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
 

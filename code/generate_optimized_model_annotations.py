@@ -16,11 +16,11 @@ from os.path import join as ospj
 from utils import *
 import sys
 sys.path.append('/users/wojemann/iEEG_processing')
-
+from config import Config
 plt.rcParams['image.cmap'] = 'magma'
 
 def main():
-    _,_,datapath,prodatapath,metapath,_,patient_table,_,_ = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),None)
+    datapath,prodatapath,metapath,patient_table = Config.deal(['datapath','prodatapath','metapath','patient_table'])
 
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
     montage = 'bipolar'

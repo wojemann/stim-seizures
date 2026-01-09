@@ -8,7 +8,7 @@ library(lmerTest)  # for Satterthwaite DOF
 library(pbkrtest) # for KR DOF
 
 # Read the data
-df <- read.csv("/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA/modeling_df.csv")
+df <- read.csv("/Users/wojemann/Documents/CNT/stim_seizures_data/PROCESSED_DATA/modeling_df.csv")
 
 # Binarize age, duration, and age_at_onset at their medians
 cat("\n--- Binarizing age, duration, and age_at_onset at their medians ---\n")
@@ -188,3 +188,22 @@ for (name in names(age_duration_models_ols)) {
   cat(sprintf("  R-squared: %.3f\n", summary(m)$r.squared))
   cat(sprintf("  Adj R-squared: %.3f\n", summary(m)$adj.r.squared))
 }
+
+# ===== OUTCOME ANALYSIS (SEPARATE SECTION) =====
+cat("\n\n========== OUTCOME ANALYSIS ==========\n")
+
+cat("\n--- Outcome Model ---\n")
+cat("Linear model coefficients: Regression coefficients, standard errors, t-values, and p-values for each predictor.\n") # nolint
+# Drop rows with missing outcome values
+vars_needed_outcome <- c("MCC", "outcome", "patient")
+df_outcome_complete <- df[complete.cases(df[, vars_needed_outcome]), ]
+
+# Aggregate all patients to one row per patient (min MCC)
+df_outcome_agg <- aggregate(MCC ~ patient + outcome, data = df_outcome_complete, FUN = min, na.rm = TRUE)
+
+cat(sprintf("Original rows: %d, After aggregation: %d\n", nrow(df_outcome_complete), nrow(df_outcome_agg)))
+cat(sprintf("Number of patients: %d\n", length(unique(df_outcome_agg$patient))))
+
+# Use regular linear model since we're at patient level (no repeated measures)
+model_outcome <- lm(MCC ~ outcome, data = df_outcome_agg)
+print(summary(model_outcome))

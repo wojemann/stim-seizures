@@ -11,8 +11,8 @@ library(pbkrtest) # for KR DOF
 # setwd("/mnt/sauce/littlab/users/wojemann/stim-seizures")
 
 # Load the data
-time_df_all <- read.csv("/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA/time_df_all.csv")
-spread_df_all <- read.csv("/mnt/sauce/littlab/users/wojemann/stim-seizures/PROCESSED_DATA/spread_df_all.csv") 
+time_df_all <- read.csv("/Users/wojemann/Documents/CNT/stim_seizures_data/PROCESSED_DATA/time_df_all.csv")
+spread_df_all <- read.csv("/Users/wojemann/Documents/CNT/stim_seizures_data/PROCESSED_DATA/spread_df_all.csv") 
 
 # Check data structure
 cat("=== DATA STRUCTURE ===\n")
