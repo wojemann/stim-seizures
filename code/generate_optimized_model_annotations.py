@@ -63,14 +63,14 @@ def main():
         sz_comb=params['sz_comb']
         v=params['v']
 
-        tuned_thresholds = pd.read_pickle(ospj(prodatapath,f"patient_tuned_classification_thresholds_stim_sz-{sz_comb}.pkl"))
+        tuned_thresholds = pd.read_pickle(ospj(prodatapath,f"patient_tuned_classification_thresholds_stim_sz-{sz_comb}_v2.pkl"))
 
         pbar = tqdm(patient_table.iterrows(),total=len(patient_table))
         
         for _,row in pbar:
             pt = row.ptID
-            # if pt != 'CHOP041':
-            #     continue
+            if pt != 'HUP250':
+                continue
             pbar.set_description(desc=f"Patient -- {pt}",refresh=True)
             if (len(row.interictal_training) == 0) or (pt not in tuned_thresholds.Patient.to_numpy()):
                 continue
@@ -161,8 +161,10 @@ def main():
                 predicted_channels['sec_chs_loose'].append(mdl_sec_ch_loose)
 
         predicted_channels = pd.DataFrame(predicted_channels)
-        predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v{v}_sz-{sz_comb}_pt-{pt_comb}_smooth-{smooth}.pkl"))
-    _ = in_parallel(par_fun,param_list)
+        # predicted_channels.to_pickle(ospj(prodatapath,f"optimized_predicted_channels_{mdl_str}_tuned_thresholds_v{v}_sz-{sz_comb}_pt-{pt_comb}_smooth-{smooth}.pkl"))
+    # _ = in_parallel(par_fun,param_list)
+    for param in param_list:
+        par_fun(param)
     # predicted_channels.to_csv(ospj(prodatapath,"optimized_predicted_channels.csv"))
 if __name__ == "__main__":
     main()

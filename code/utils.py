@@ -2374,3 +2374,18 @@ def plot_seizure_similarity(dat,agreement='MCC',palette=['red','blue','purple'],
 
 
     return fig,ax
+
+def alt_get_r_path(prodatapath,pt):
+    return ospj(prodatapath,'rois',pt,'electrodes.tsv')
+def load_alt_regions(prodatapath,pt):
+    region_path = alt_get_r_path(prodatapath,pt)
+    if os.path.exists(region_path):
+        # electrode_regions = pd.read_pickle(region_path)
+        electrode_regions = pd.read_csv(region_path,sep='\t')
+        if 'HUP' not in pt:
+            electrode_regions.rename(columns={'label':'name'},inplace=True)
+            electrode_regions.rename(columns={'brain_area':'label'},inplace=True)
+        else:
+            electrode_regions.rename(columns={'label':'name'},inplace=True)
+            electrode_regions.rename(columns={'roi':'label'},inplace=True)
+    return electrode_regions
