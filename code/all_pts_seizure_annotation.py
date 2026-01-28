@@ -87,22 +87,22 @@ seizure_df = seizure_df[seizure_df.stim == 0]
 #     'suffix': '',
 #     'metric': 'mse'
 # }
-# model_dict = {
-#     'model': LiNDDA, 
-#     'model_name': 'LiNDDA', 
-#     'sequence_length': 3, 
-#     'forecast_length': 2, 
-#     'suffix': '',
-#     'metric': 'mse'
-# }
 model_dict = {
-    'model': WVNT,
-    'model_name': 'WVNT',
-    'sequence_length': None,
-    'forecast_length': None,
+    'model': LiNDDA, 
+    'model_name': 'LiNDDA', 
+    'sequence_length': 3, 
+    'forecast_length': 2, 
     'suffix': '',
     'metric': 'mse'
 }
+# model_dict = {
+#     'model': WVNT,
+#     'model_name': 'WVNT',
+#     'sequence_length': None,
+#     'forecast_length': None,
+#     'suffix': '',
+#     'metric': 'mse'
+# }
 
 # Process each patient/seizure
 pbar = tqdm(seizure_df.iterrows(), total=len(seizure_df))

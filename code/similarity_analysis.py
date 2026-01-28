@@ -22,20 +22,20 @@ datapath, prodatapath, figpath, metapath = Config.deal(['datapath', 'prodatapath
 #     'suffix': '',
 #     'metric': 'mse'
 # }
-# model_dict = {
-#     'model_name': 'LiNDDA', 
-#     'sequence_length': 3, 
-#     'forecast_length': 2, 
-#     'suffix': '',
-#     'metric': 'mse'
-# }
 model_dict = {
-    'model_name': 'WVNT',
-    'sequence_length': None,
-    'forecast_length': None,
+    'model_name': 'LiNDDA', 
+    'sequence_length': 3, 
+    'forecast_length': 2, 
     'suffix': '',
-    'metric': 'prob'
+    'metric': 'mse'
 }
+# model_dict = {
+#     'model_name': 'WVNT',
+#     'sequence_length': None,
+#     'forecast_length': None,
+#     'suffix': '',
+#     'metric': 'prob'
+# }
 threshold_agg = 'mean'
 thresh_str = f'pretrained_{threshold_agg}'
 
