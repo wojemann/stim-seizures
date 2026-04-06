@@ -61,7 +61,275 @@ ONCET_THRESHOLD = 0.6  # Change this value as needed
 OVERWRITE = False
 
 # Spread time offset (in seconds) from onset
-SPREAD_TIME_OFFSET = 3.0  # 3 seconds after onset
+SPREAD_TIME_OFFSET = 10.0  # 3 seconds after onset
+
+
+def _extract_rater_ids(annot_row, phase: str, n_annotators: int):
+    """
+    Best-effort extraction of stable rater IDs/names for a given phase.
+
+    The annotations pickle isn't schema-locked across versions, so we try a few common
+    column names. If none are present, we fall back to within-seizure indices.
+    """
+    phase = str(phase)
+
+    # Preferred schema: a single column with clinician initials matching annotator order
+    if "clinician" in annot_row.index:
+        clinicians = annot_row["clinician"]
+        if clinicians is not None and isinstance(clinicians, (list, tuple, np.ndarray, pd.Series)):
+            clinicians = list(clinicians)
+            if len(clinicians) == n_annotators:
+                return [str(x) for x in clinicians]
+
+    candidates = [
+        f"{phase}_rater_ids",
+        f"{phase}_rater_names",
+        f"{phase}_raters",
+        f"{phase}_rater_list",
+        f"{phase}_annotator_ids",
+        f"{phase}_annotator_names",
+        f"{phase}_annotators",
+        f"{phase}_annotator_list",
+        f"{phase}_reader_ids",
+        f"{phase}_reader_names",
+        f"{phase}_readers",
+    ]
+
+    for col in candidates:
+        if col in annot_row.index:
+            ids = annot_row[col]
+            if ids is None:
+                continue
+            # Accept list/tuple/np array/Series of IDs
+            if isinstance(ids, (list, tuple, np.ndarray, pd.Series)):
+                ids = list(ids)
+                if len(ids) == n_annotators:
+                    return [str(x) for x in ids]
+
+    # Fallback: within-seizure rater indices (not stable across seizures)
+    return [f"{phase}_rater_{i+1}" for i in range(n_annotators)]
+
+
+def _build_seizure_channel_calibration_rows(
+    seizure_id: str,
+    patient: str,
+    all_chs,
+    phase_annotators,
+    annot_row,
+    phase: str,
+    prob_chs,
+    model_probs,
+):
+    """
+    Build per-(seizure, channel) rows for consensus calibration analysis.
+
+    Each row corresponds to one first-contact channel in `prob_chs` that is present
+    in `all_chs`. Consensus rate is computed across annotators for this seizure.
+    """
+    if phase_annotators is None or len(phase_annotators) == 0:
+        return [], []
+
+    # Map channel name -> index in clinical arrays
+    ch_to_idx = {ch: i for i, ch in enumerate(all_chs)}
+
+    # Stable rater IDs, if available
+    rater_ids = _extract_rater_ids(annot_row, phase=phase, n_annotators=len(phase_annotators))
+
+    rows = []
+    missing_chs = 0
+    for j, ch in enumerate(prob_chs):
+        if ch not in ch_to_idx:
+            missing_chs += 1
+            continue
+        idx = ch_to_idx[ch]
+
+        votes = []
+        row = {
+            "seizure_id": seizure_id,
+            "patient": patient,
+            "phase": phase,
+            "channel": ch,
+            "model_prob": float(model_probs[j]),
+        }
+        for k, rater_id in enumerate(rater_ids):
+            v = phase_annotators[k][idx]
+            # Ensure numeric 0/1 for easy aggregation
+            v01 = float(bool(v))
+            votes.append(v01)
+            row[f"vote__{rater_id}"] = v01
+
+        row["consensus_rate"] = float(np.mean(votes)) if len(votes) else np.nan
+        row["n_raters"] = int(len(votes))
+        rows.append(row)
+
+    return rows, rater_ids
+
+
+def _binned_curve(x, y, bin_edges):
+    """
+    Compute binned calibration curve points.
+
+    Returns a DataFrame with columns: bin_idx, n, x_mean, y_mean
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    x = x[ok]
+    y = y[ok]
+
+    if x.size == 0:
+        return pd.DataFrame(columns=["bin_idx", "n", "x_mean", "y_mean"])
+
+    # digitize: bins are [edge_i, edge_{i+1}) except last includes right edge
+    bin_idx = np.digitize(x, bin_edges, right=False) - 1
+    bin_idx = np.clip(bin_idx, 0, len(bin_edges) - 2)
+
+    out = []
+    for b in range(len(bin_edges) - 1):
+        mask = bin_idx == b
+        n = int(np.sum(mask))
+        if n == 0:
+            continue
+        out.append(
+            {
+                "bin_idx": b,
+                "n": n,
+                "x_mean": float(np.mean(x[mask])),
+                "y_mean": float(np.mean(y[mask])),
+            }
+        )
+    return pd.DataFrame(out)
+
+
+def _ece_from_binned_curve(curve_df):
+    """ECE = sum_b (n_b / N) * |y_b - x_b| (weighted by sample count per bin)."""
+    if curve_df is None or len(curve_df) == 0:
+        return np.nan
+    n = curve_df["n"].to_numpy(dtype=float)
+    N = float(np.sum(n))
+    if N <= 0:
+        return np.nan
+    return float(np.sum((n / N) * np.abs(curve_df["y_mean"].to_numpy() - curve_df["x_mean"].to_numpy())))
+
+
+def _ece_diagnostic(curve_df, name: str):
+    """
+    Print per-bin contribution to ECE to explain why model ECE can be high.
+    Helps clarify: high-weight bins (many channels) with large |y-x| drive ECE up.
+    """
+    if curve_df is None or len(curve_df) == 0:
+        return
+    n = curve_df["n"].to_numpy(dtype=float)
+    N = float(np.sum(n))
+    x = curve_df["x_mean"].to_numpy()
+    y = curve_df["y_mean"].to_numpy()
+    err = np.abs(y - x)
+    weight = n / N
+    contrib = weight * err
+    print(f"\n  ECE diagnostic ({name}): ECE = {np.sum(contrib):.4f}")
+    print("  bin_x_mean  bin_y_mean   n      weight   |y-x|   contribution")
+    for i in range(len(curve_df)):
+        print(f"  {x[i]:.3f}       {y[i]:.3f}       {int(n[i]):5d}  {weight[i]:.3f}   {err[i]:.3f}   {contrib[i]:.4f}")
+
+
+def _plot_consensus_calibration(cal_df, phase: str, out_path: str, n_bins: int = 9):
+    """
+    Plot model vs per-rater calibration against consensus rate.
+
+    X-axis: mean consensus rate per bin.
+    Y-axis: mean model prob (model) or mean vote rate (rater) per bin.
+
+    Why model ECE can be much higher than clinician ECE even when curves look similar:
+    1) Consensus is the average of the clinicians' votes, so each clinician is being
+       compared to an aggregate that includes themselves. That tends to keep their
+       bin-wise vote rate close to the bin's consensus (low |y-x|). The model is
+       compared to the same consensus but is independent—it can systematically
+       disagree (e.g. high prob where consensus is low), giving large |y-x|.
+    2) ECE is weighted by sample count per bin. Most seizure-channel pairs have
+       low consensus (non-onset channels: 0, 0.2, 0.33). If the model assigns
+       moderate-to-high probabilities there, those high-weight bins contribute
+       large terms to ECE. Clinicians' votes in those bins are 0/1 and average
+       close to the consensus by construction, so their weighted error stays low.
+    """
+    if cal_df is None or len(cal_df) == 0:
+        print(f"No calibration rows available for {phase}; skipping plot.")
+        return np.nan, {}
+
+    # Fixed binning across [0, 1]
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+
+    # Model curve
+    model_curve = _binned_curve(cal_df["consensus_rate"].values, cal_df["model_prob"].values, bin_edges)
+    model_ece = _ece_from_binned_curve(model_curve)
+
+    # Optional: print per-bin ECE contribution so users can see why model ECE is high (see docstring below)
+    _ece_diagnostic(model_curve, f"ONCET ({phase})")
+
+    # Per-rater curves from wide -> long vote columns
+    vote_cols = [c for c in cal_df.columns if c.startswith("vote__")]
+    if len(vote_cols) == 0:
+        print(f"No per-rater vote columns found for {phase}; skipping rater curves.")
+        vote_cols = []
+
+    long_rows = []
+    for c in vote_cols:
+        rater_id = c.replace("vote__", "", 1)
+        tmp = cal_df[["consensus_rate", c]].rename(columns={c: "vote"})
+        tmp = tmp.assign(rater_id=rater_id)
+        long_rows.append(tmp)
+
+    if len(long_rows) > 0:
+        long_df = pd.concat(long_rows, axis=0, ignore_index=True)
+    else:
+        long_df = pd.DataFrame(columns=["consensus_rate", "vote", "rater_id"])
+
+    rater_curves = {}
+    rater_eces = {}
+    for rater_id, sub in long_df.groupby("rater_id"):
+        curve = _binned_curve(sub["consensus_rate"].values, sub["vote"].values, bin_edges)
+        rater_curves[rater_id] = curve
+        rater_eces[rater_id] = _ece_from_binned_curve(curve)
+
+    # Plotting (kappa-style: blue for model, gray for clinicians; no ECE/names in legend)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.plot([0, 1], [0, 1], "k--", alpha=0.5, linewidth=2, label="Perfect")
+
+    # Clinicians: all gray, single legend entry "Clinicians"
+    if len(rater_curves) > 0:
+        for i, (rater_id, curve) in enumerate(sorted(rater_curves.items(), key=lambda x: x[0])):
+            if len(curve) == 0:
+                continue
+            label = "Clinicians" if i == 0 else None
+            ax.plot(
+                curve["x_mean"].values,
+                curve["y_mean"].values,
+                color="gray",
+                linewidth=2,
+                alpha=0.8,
+                label=label,
+            )
+
+    # Model: same blue as kappa plots, no ECE in legend
+    if len(model_curve) > 0:
+        ax.plot(
+            model_curve["x_mean"].values,
+            model_curve["y_mean"].values,
+            color="blue",
+            linewidth=4,
+            label="ONCET",
+        )
+
+    ax.set_xlabel("Consensus rate (fraction of raters voting yes)")
+    ax.set_ylabel("Mean prediction / vote rate")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_title(f"Consensus calibration ({phase})")
+    ax.legend(loc="best", fontsize=8, frameon=False)
+    sns.despine()
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+
+    return model_ece, rater_eces
 
 
 def load_or_generate_oncet_probabilities(patient, onset_run, onset_labels, montage='bipolar', overwrite=False):
@@ -274,6 +542,12 @@ def main():
     # Store patient IDs and seizure info for LME analysis
     all_patients_list = []
     all_seizure_ids = []
+
+    # Consensus-calibration storage (per seizure-channel)
+    onset_calibration_rows = []
+    spread_calibration_rows = []
+    onset_rater_ids_seen = set()
+    spread_rater_ids_seen = set()
     
     # Process each seizure
     pbar = tqdm(seizures_df.iterrows(), total=len(seizures_df))
@@ -364,6 +638,35 @@ def main():
             # Get probabilities at spread window (5 timepoints)
             spread_window_end = min(spread_idx + 5, len(sz_prob_smooth))
             spread_probs = sz_prob_smooth.iloc[spread_idx:spread_window_end, :].mean(axis=0).values
+
+            # Build consensus-calibration rows (channel = first contact)
+            seizure_id = f"{patient}_{onset_run}"
+            onset_rows, onset_rids = _build_seizure_channel_calibration_rows(
+                seizure_id=seizure_id,
+                patient=patient,
+                all_chs=all_chs,
+                phase_annotators=ueo_annotators,
+                annot_row=annot_row,
+                phase="ueo",
+                prob_chs=prob_chs,
+                model_probs=onset_probs,
+            )
+            onset_calibration_rows.extend(onset_rows)
+            onset_rater_ids_seen.update(onset_rids)
+
+            if sec_annotators is not None and len(sec_annotators) > 0:
+                spread_rows, spread_rids = _build_seizure_channel_calibration_rows(
+                    seizure_id=seizure_id,
+                    patient=patient,
+                    all_chs=all_chs,
+                    phase_annotators=sec_annotators,
+                    annot_row=annot_row,
+                    phase="sec",
+                    prob_chs=prob_chs,
+                    model_probs=spread_probs,
+                )
+                spread_calibration_rows.extend(spread_rows)
+                spread_rater_ids_seen.update(spread_rids)
             
             # Calculate ROC curves
             fpr_onset, tpr_onset, _ = roc_curve(onset_mask, onset_probs)
@@ -421,7 +724,6 @@ def main():
             all_spread_kappas.append(spread_kappa)
             
             # Store patient and seizure ID for LME analysis (only if we successfully calculated kappas)
-            seizure_id = f"{patient}_{onset_run}"
             all_patients_list.append(patient)
             all_seizure_ids.append(seizure_id)
             all_onset_interrater_kappas.append(onset_inter_rater)
@@ -435,6 +737,32 @@ def main():
     
     # Generate plots
     print("\nGenerating plots...")
+
+    # Consensus calibration plots + ECEs
+    onset_cal_df = pd.DataFrame(onset_calibration_rows)
+    spread_cal_df = pd.DataFrame(spread_calibration_rows)
+
+    # If we had to fall back to per-seizure indices, warn the user (aggregation may be incorrect)
+    if any(r.startswith("ueo_rater_") for r in onset_rater_ids_seen) and len(onset_rater_ids_seen) > 0:
+        print(
+            "Warning: could not use the `clinician` column for onset rater IDs (missing or length mismatch); "
+            "falling back to within-seizure rater indices. Per-rater aggregation across seizures may be invalid."
+        )
+    if any(r.startswith("sec_rater_") for r in spread_rater_ids_seen) and len(spread_rater_ids_seen) > 0:
+        print(
+            "Warning: could not use the `clinician` column for spread rater IDs (missing or length mismatch); "
+            "falling back to within-seizure rater indices. Per-rater aggregation across seizures may be invalid."
+        )
+
+    onset_cal_path = ospj(figpath, "ONCET_consensus_calibration_onset.pdf")
+    spread_cal_path = ospj(figpath, "ONCET_consensus_calibration_spread.pdf")
+    onset_model_ece, onset_rater_eces = _plot_consensus_calibration(onset_cal_df, phase="ueo", out_path=onset_cal_path)
+    spread_model_ece, spread_rater_eces = _plot_consensus_calibration(spread_cal_df, phase="sec", out_path=spread_cal_path)
+
+    if len(onset_cal_df) > 0:
+        print(f"Consensus calibration (onset) saved to {onset_cal_path}")
+    if len(spread_cal_df) > 0:
+        print(f"Consensus calibration (spread) saved to {spread_cal_path}")
     
     # Calculate average AUC values for legend
     valid_onset_aucs = [a for a in all_onset_aucs if not np.isnan(a)]
@@ -874,6 +1202,20 @@ def main():
             'mean': np.mean(valid_spread_interrater_kappas) if len(valid_spread_interrater_kappas) > 0 else np.nan,
             'SE': np.std(valid_spread_interrater_kappas, ddof=1) / np.sqrt(len(valid_spread_interrater_kappas)) if len(valid_spread_interrater_kappas) > 1 else np.nan,
             'n': len(valid_spread_interrater_kappas)
+        },
+        'ConsensusCalibration_ECE': {
+            'onset': {
+                'model': onset_model_ece,
+                'raters': onset_rater_eces
+            },
+            'spread': {
+                'model': spread_model_ece,
+                'raters': spread_rater_eces
+            }
+        },
+        'ConsensusCalibration_n_pairs': {
+            'onset': int(len(onset_cal_df)),
+            'spread': int(len(spread_cal_df))
         }
     }
     
