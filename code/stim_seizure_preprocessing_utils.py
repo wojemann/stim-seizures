@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import scipy as sc
 from os.path import join as ospj
 
-def stim_detect(data, threshold, fs):
+def stim_detect(data, threshold, fs, stim_freq = 1):
     """
     Detect stimulation artifacts in neural data by finding peaks in the derivative.
     
@@ -12,7 +12,7 @@ def stim_detect(data, threshold, fs):
         data: DataFrame with neural channels as columns
         threshold: Array of threshold values for each channel
         fs: Sampling frequency in Hz
-        
+        stim_freq: Stimulation frequency in Hz (default 1 Hz)
     Returns:
         pk_idxs: Array of indices where stimulation artifacts occur
         stim_chs: Boolean array indicating which channels have stimulation
@@ -22,10 +22,14 @@ def stim_detect(data, threshold, fs):
     
     # Find peaks in each channel's derivative (stimulation causes sharp changes)
     for i, (_, ch) in enumerate(data.items()):
-        pks, _ = sc.signal.find_peaks(np.abs(np.diff(ch.to_numpy())),
-                                    height=threshold[i],
-                                    distance=fs/4*3,  # Minimum 750ms between peaks
-                                    )
+        interstim_interval_samples = int(round(fs / stim_freq))
+        min_peak_distance = int(round((3/4) * interstim_interval_samples))
+        pks, _ = sc.signal.find_peaks(
+            np.abs(np.diff(ch.to_numpy())),
+            height=threshold[i],
+            distance=min_peak_distance  # 3/4 of the interstimulus interval in samples
+        )
+                               
         all_pks[pks, i] = 1
     
     # Find time points where multiple channels show peaks (true stimulation events)
