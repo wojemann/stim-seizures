@@ -1,174 +1,208 @@
 ### SAVING SEIZURES AS BIDS FORMAT TO LEIF
+"""
+Script to convert seizure data to BIDS (Brain Imaging Data Structure) format.
+Processes seizure recordings from iEEG data, applies minimal preprocessing, and saves
+in standardized BIDS format for further analysis.
+"""
+
 import numpy as np
 import pandas as pd
-import json
-import os
 from os.path import join as ospj
 from utils import *
 import scipy as sc
+import warnings
 
 from tqdm import tqdm
-
 
 # BIDS imports
 import mne
 from mne_bids import BIDSPath, write_raw_bids
 
-# Loading CONFIG
-usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = load_config(ospj('/mnt/leif/littlab/users/wojemann/stim-seizures/code','config.json'),flag=None)
+# Loading CONFIG - get paths and patient information
+from config import Config
+usr,passpath,datapath,prodatapath,metapath,figpath,patient_table,rid_hup,pt_list = Config.deal()
 
-# Setting Seed
+# Setting Seed for reproducibility
 np.random.seed(171999)
 
+# Target sampling frequency after downsampling
 TARGET = 512
+# Whether to overwrite existing BIDS files
 OVERWRITE = False
 
 def main():
-    # Setting up BIDS targets
+    """
+    Main function to process seizure data and convert to BIDS format.
+    
+    Workflow:
+    1. Load seizure metadata from CSV
+    2. Set up BIDS directory structure
+    3. For each patient and seizure:
+       - Extract iEEG data with buffer around seizure
+       - Preprocess data (filter, downsample, clean channels)
+       - Create MNE Raw object with annotations
+       - Save in BIDS format
+    """
+    
+    # Setting up BIDS targets - define BIDS directory structure and metadata
     bids_path_kwargs = {
-        "root": ospj(datapath,'BIDS'),
-        "datatype": "ieeg",
-        "extension": ".edf",
-        "suffix": "ieeg",
-        "task": "ictal",
-        "session": "clinical01",
+        "root": ospj(datapath,'BIDS'),  # Root BIDS directory
+        "datatype": "ieeg",             # Intracranial EEG data type
+        "extension": ".edf",            # European Data Format
+        "suffix": "ieeg",               # BIDS suffix for iEEG data
+        "task": "ictal",                # Task name (ictal = seizure)
+        "session": "clinical01",        # Clinical recording session
     }
     bids_path = BIDSPath(**bids_path_kwargs)
+    
+    # iEEG.org authentication credentials
     ieeg_kwargs = {
         "username": usr,
         "password_bin_file": passpath,
     }
 
-    # Loading in all seizure data
+    # Loading in all seizure data from annotation CSV
     seizures_df = pd.read_csv(ospj(metapath,"stim_seizure_information - LF_seizure_annotation.csv"))
-    seizures_df.dropna(axis=0,how='all',inplace=True)
-    seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)
-    seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)
-    seizures_df['approximate_onset'].fillna(seizures_df['Other_onset_description'],inplace=True)
-    # drop HF stim induced seizures
+    seizures_df.dropna(axis=0,how='all',inplace=True)  # Remove completely empty rows
+    
+    # Fill missing onset times with backup columns in order of preference
+    seizures_df['approximate_onset'].fillna(seizures_df['UEO'],inplace=True)  # Use UEO if available
+    seizures_df['approximate_onset'].fillna(seizures_df['EEC'],inplace=True)  # Then EEC
+    seizures_df['approximate_onset'].fillna(seizures_df['Other_onset_description'],inplace=True)  # Finally other descriptions
+    
+    # Filter data: exclude high frequency stim induced seizures (stim=2) and keep only specified patients
     seizures_df = seizures_df[seizures_df.stim != 2]
-    # adult_list = [pt for pt in pt_list if 'CHOP' not in pt]
-    # seizures_df = seizures_df[seizures_df.Patient.isin(adult_list)]
     seizures_df = seizures_df[seizures_df.Patient.isin(pt_list)]
-    bad_ch_dict = dict()
-    buffer = 120 # seconds before and after seizure to save
+    
+    # Buffer time (seconds) to save before and after seizure for context
+    buffer = 120
+    
+    # Process each patient's seizures
     for pt, group in tqdm(
         seizures_df.groupby('Patient'),
         total=seizures_df.Patient.nunique(),
         desc="Patients",
         position=0,
     ):
-        bad_ch_dict[pt] = set()
+        # Assign unique IEEG ID for each recording file within patient
         ieegid = group.groupby('IEEGname').ngroup().astype(int)
         seizures_df.loc[ieegid.index,'IEEGID'] = ieegid
         group.loc[ieegid.index,'IEEGID'] = ieegid
         
-        # sort by start time
+        # Sort seizures by recording file and onset time for consistent processing
         group = group.sort_values(["IEEGID","approximate_onset"])
         group.reset_index(inplace=True, drop=True)
-        for idx, row in tqdm(
+        
+        # Process each seizure in the patient
+        for _, row in tqdm(
             group.iterrows(), total=group.shape[0], desc="seizures", position=1, leave=False
         ):
-            if row.stim == 2: # Skip high frequency induced seizures
+            # Skip high frequency induced seizures (defensive check)
+            if row.stim == 2:
                 continue
+                
+            # Define task names: 0=ictal (spontaneous), 1=stim (stimulation-induced)
             task_names = ['ictal','stim']
-            onset = row.approximate_onset
-            offset = row.end
-            # get bids path
+            onset = row.approximate_onset  # Seizure start time (seconds)
+            offset = row.end               # Seizure end time (seconds)
+            
+            # Create BIDS path for this specific seizure
             sz_clip_bids_path = bids_path.copy().update(
-                subject=pt,
-                run=int(row["IEEGID"]),
-                task=f"{task_names[int(row.stim)]}{int(onset)}",
+                subject=pt,                                    # Patient ID
+                run=int(row["IEEGID"]),                       # iEEG recording file number
+                task=f"{task_names[int(row.stim)]}{int(onset)}", # Task with onset time appended
             )
 
-            # check if the file already exists, if so, skip
+            # Skip if file already exists and not overwriting
             if sz_clip_bids_path.fpath.exists() and not OVERWRITE:
                 continue
 
-            # CHOP037 has a seizure that's too large
+            # Skip problematic seizure in CHOP037 (too large for processing)
             if (pt == 'CHOP037') & (onset == 962082.12):
                 continue
 
-            # HUP097 does not have an end time, so we'll just use 60 seconds from the start
-            if np.isnan(offset):
-                offset = onset + 60
-
-            # get the duration and clip it to 5 mins
+            # Calculate seizure duration
             duration = offset-onset
 
+            # Extract iEEG data with buffer around seizure
             data, fs = get_iEEG_data(
                 iEEG_filename=row["IEEGname"],
-                start_time_usec=(onset - buffer) * 1e6, # start buffer seconds before the seizure
-                stop_time_usec=(offset + buffer) * 1e6,
+                start_time_usec=(onset - buffer) * 1e6,  # Start buffer seconds before seizure
+                stop_time_usec=(offset + buffer) * 1e6,   # End buffer seconds after seizure
                 **ieeg_kwargs,
             )
 
-            # channels with flat line may not save proprely, so we'll drop them
+            # Remove channels with flat line (constant signal) as they may cause save issues
             data = data[data.columns[data.min(axis=0) != data.max(axis=0)]]
 
-            # clean the labels
+            # Clean electrode labels for consistency
             data.columns = clean_labels(data.columns, pt=pt)
             
-            # remove scalp and ekg electrodes
+            # Remove scalp and EKG electrodes (keep only intracranial electrodes)
             no_scalp_labels = remove_scalp_electrodes(data.columns)
             data = data.loc[:,no_scalp_labels]
 
-            # if there are duplicate labels, keep the first one in the table
+            # Remove duplicate channel labels (keep first occurrence)
             data = data.loc[:, ~data.columns.duplicated()]
-            # get the channel types
+            
+            # Determine channel types (e.g., SEEG, ECoG) for MNE
             ch_types = check_channel_types(list(data.columns))
             ch_types.set_index("name", inplace=True, drop=True)
 
-            # convert nan to 0
+            # Replace NaN values with 0 for stable processing
             data.fillna(0, inplace=True)
 
-            # minimal preprocessing
-            data_np = data.to_numpy().T
-            data_np_notch = notch_filter(data_np,fs)
-            # data_np_filt = bandpass_filter(data_np_notch,fs,order=3,lo=1,hi=100)
-            signal_len = int(data_np_notch.shape[1]/fs*TARGET)
-            data_np_ds = sc.signal.resample(data_np_notch,signal_len,axis=1)
-            fs = TARGET
+            # Preprocessing pipeline
+            data_np = data.to_numpy().T              # Convert to numpy array (channels x samples)
+            data_np_notch = notch_filter(data_np,fs) # Apply notch filter (remove line noise)
+            
+            # Downsample to target frequency
+            signal_len = int(data_np_notch.shape[1]/fs*TARGET)  # Calculate new length
+            data_np_ds = sc.signal.resample(data_np_notch,signal_len,axis=1)  # Resample
+            fs = TARGET  # Update sampling frequency
 
-            # detect bad channels
-            if row.stim == 0:
-                ch_mask,_ = detect_bad_channels(data_np_ds.T,fs)
-                bad_ch = data.columns[~ch_mask].to_list()
-                bad_ch_dict[pt].update(bad_ch)
-
-            # save the data
-            # run is the iEEG file number
-            # task is ictal with the start time in seconds appended
+            # Create MNE Raw object for BIDS conversion
             data_info = mne.create_info(
-                ch_names=list(data.columns), sfreq=fs, ch_types="eeg", verbose=False
+                ch_names=list(data.columns), 
+                sfreq=fs, 
+                ch_types="eeg",  # Default to EEG, will be updated below
+                verbose=False
             )
+            
+            # Create Raw object (convert µV to V for MNE standard)
             raw = mne.io.RawArray(
-                data_np_ds / 1e6,  # mne needs data in volts,
+                data_np_ds / 1e6,  # Convert microvolts to volts
                 data_info,
                 verbose=False,
             )
+            
+            # Set correct channel types based on electrode analysis
             raw.set_channel_types(ch_types.type)
+            
+            # Create seizure annotation for the clip
             annots = mne.Annotations(
-                onset=[buffer], # seizure starts 60 seconds after the start of the clip
-                duration=[duration],
-                description=task_names[int(row.stim)],
+                onset=[buffer],        # Seizure starts after buffer period
+                duration=[duration],   # Seizure duration
+                description=task_names[int(row.stim)],  # Seizure type (ictal/stim)
             )
 
+            # Add annotations to raw data and save in BIDS format
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+                warnings.simplefilter("ignore")  # Suppress MNE warnings
                 raw.set_annotations(annots)
 
+                # Write to BIDS format
                 write_raw_bids(
                     raw,
                     sz_clip_bids_path,
                     overwrite=OVERWRITE,
                     verbose=False,
                     allow_preload=True,
-                    format="EDF",
+                    format="EDF",  # Save as European Data Format
                 )
+    
+    # Save updated seizure dataframe with BIDS information
     seizures_df.to_csv(ospj(metapath,"stim_seizure_information_BIDS.csv"))
-    # Save to a JSON file
-    with open(ospj(metapath,'bad_ch_dict.pkl'), 'wb') as f:
-        pickle.dump(bad_ch_dict, f)
+
 if __name__ == "__main__":
     main()
