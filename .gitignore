@@ -1,14 +1,22 @@
 # Manual additions
 ._*
 .DS_Store
-/PROCESSED_DATA/
+# Ignore the large local processed-data dir, but ship the consensus annotations
+# that every figure/table is generated from. (A negation only works if the dir
+# itself is not excluded — hence /PROCESSED_DATA/* rather than /PROCESSED_DATA/.)
+/PROCESSED_DATA/*
+!/PROCESSED_DATA/dataset_consensus.pkl
 /RAW_DATA/
 /figures/
 *.csv
 *.xlsx
-/stim_env/*
+/stim-env/
 /stim_env-3_10/
 config.json
+# Per-machine path overrides, never published
+code/config_local.py
+# iEEG.org login credentials — never publish
+*.bin
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

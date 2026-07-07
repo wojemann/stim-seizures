@@ -1,7 +1,13 @@
+import os
 from os.path import join as ospj
 from os.path import exists as ospe
 import pandas as pd
 import matplotlib.pyplot as plt
+
+# Repository root (this file lives in <repo>/code/config.py). Anchoring to the
+# file location keeps repo-relative paths correct regardless of the working
+# directory a notebook/script is launched from.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # suppress setting with copy warning
 pd.options.mode.chained_assignment = None
@@ -25,21 +31,18 @@ plt.rcParams['ytick.minor.width'] = 1
 plt.rcParams['legend.frameon'] = False
 
 class Config:
-    # Hardcoded paths
-    usr = "wojemann" # change to your username
-    passpath = "/mnt/sauce/littlab/users/wojemann/woj_ieeglogin.bin" # change to your login path
-    datapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/RAW_DATA" # change to your raw data path
-    prodatapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/PROCESSED_DATA" # change to your processed data path
-    metapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/METADATA" # change to your metadata path
-    figpath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/FIGURES" # change to your figure path
-    if not ospe(datapath):
-        usr = "wojemann" # change to your username
-        passpath = "/Users/wojemann/Documents/CNT/woj_ieeglogin.bin" # change to your login path
-        datapath = "/Users/wojemann/local_data/dynasd_data/RAW_DATA" # change to your raw data path
-        prodatapath = "/Users/wojemann/local_data/dynasd_data/PROCESSED_DATA" # change to your processed data path
-        metapath = "/Users/wojemann/local_data/dynasd_data/METADATA" # change to your metadata path
-        figpath = "/Users/wojemann/local_data/dynasd_data/FIGURES" # change to your figure path
-    
+    # --- Repo-relative paths: work out-of-the-box, no edits needed ---
+    repopath = _REPO_ROOT                       # repository root
+    figpath  = ospj(_REPO_ROOT, "figures")      # where figures are written
+
+    # --- Machine-specific paths: edit for your setup, or (preferred) override
+    #     them in a gitignored code/config_local.py (see the bottom of this file). ---
+    usr         = "<your_ieeg_username>"         # your iEEG.org username
+    passpath    = "/path/to/your_ieeglogin.bin"  # iEEG.org password file
+    datapath    = "/path/to/RAW_DATA"            # raw iEEG downloads
+    prodatapath = "/path/to/PROCESSED_DATA"      # large processed outputs (model probs, coherence, ...)
+    metapath    = "/path/to/METADATA"            # seizure + annotator metadata CSVs
+
     _patients = [
         {"ptID": "HUP224", "ieeg_ids": ["HUP224_phaseII","HUP224_CCEP"], "interictal_training": ["HUP224_phaseII",5915]},
         {"ptID": "HUP225", "ieeg_ids": ["HUP225_phaseII","HUP225_CCEP"], "interictal_training": ["HUP225_phaseII",71207]},
@@ -119,6 +122,7 @@ class Config:
             'prodatapath': cls.prodatapath,
             'metapath': cls.metapath,
             'figpath': cls.figpath,
+            'repopath': cls.repopath,
             'patient_table': patient_table,
             'rid_hup': rid_hup,
             'pt_list': pt_list
@@ -153,21 +157,18 @@ class Config:
         raise TypeError(f"{cls.__name__} should not be instantiated. Use class attributes directly.")
 
 class DataConfig:
-    # Hardcoded paths
-    usr = "wojemann" # change to your username
-    passpath = "/mnt/sauce/littlab/users/wojemann/woj_ieeglogin.bin" # change to your login path
-    datapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/RAW_DATA" # change to your raw data path
-    prodatapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/PROCESSED_DATA" # change to your processed data path
-    metapath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/METADATA" # change to your metadata path
-    figpath = "/mnt/sauce/littlab/users/wojemann/dynasd_data/FIGURES" # change to your figure path
-    if not ospe(datapath):
-        usr = "wojemann" # change to your username
-        passpath = "/Users/wojemann/Documents/CNT/woj_ieeglogin.bin" # change to your login path
-        datapath = "/Users/wojemann/local_data/stim_dataset_data/RAW_DATA" # change to your raw data path
-        prodatapath = "/Users/wojemann/local_data/stim_dataset_data/PROCESSED_DATA" # change to your processed data path
-        metapath = "/Users/wojemann/local_data/stim_dataset_data/METADATA" # change to your metadata path
-        figpath = "/Users/wojemann/local_data/stim_dataset_data/FIGURES" # change to your figure path
-    
+    # --- Repo-relative paths: work out-of-the-box, no edits needed ---
+    repopath = _REPO_ROOT                       # repository root
+    figpath  = ospj(_REPO_ROOT, "figures")      # where figures are written
+
+    # --- Machine-specific paths: edit for your setup, or (preferred) override
+    #     them in a gitignored code/config_local.py (see the bottom of this file). ---
+    usr         = "<your_ieeg_username>"         # your iEEG.org username
+    passpath    = "/path/to/your_ieeglogin.bin"  # iEEG.org password file
+    datapath    = "/path/to/RAW_DATA"            # raw iEEG downloads
+    prodatapath = "/path/to/PROCESSED_DATA"      # large processed outputs (model probs, coherence, ...)
+    metapath    = "/path/to/METADATA"            # seizure + annotator metadata CSVs
+
     _patients = [
         {"ptID": "HUP224", "ieeg_ids": ["HUP224_phaseII","HUP224_CCEP"], "interictal_training": ["HUP224_phaseII",5915]},
         {"ptID": "HUP225", "ieeg_ids": ["HUP225_phaseII","HUP225_CCEP"], "interictal_training": ["HUP225_phaseII",71207]},
@@ -247,6 +248,7 @@ class DataConfig:
             'prodatapath': cls.prodatapath,
             'metapath': cls.metapath,
             'figpath': cls.figpath,
+            'repopath': cls.repopath,
             'patient_table': patient_table,
             'rid_hup': rid_hup,
             'pt_list': pt_list
@@ -279,3 +281,25 @@ class DataConfig:
     def __new__(cls):
         """Prevent instantiation by raising an error."""
         raise TypeError(f"{cls.__name__} should not be instantiated. Use class attributes directly.")
+
+# --- Per-machine path overrides (optional, gitignored) --------------------------
+# To run on your own machine without editing the placeholders above, create
+# code/config_local.py defining either/both of these dicts, e.g.:
+#
+#     CONFIG = dict(usr="me", passpath="/home/me/ieeglogin.bin",
+#                   datapath="/data/RAW_DATA", prodatapath="/data/PROCESSED_DATA",
+#                   metapath="/data/METADATA", figpath="/data/FIGURES")
+#     DATACONFIG = dict(...)   # same keys, for the DataConfig class
+#
+# Only the keys you set are overridden; repopath/figpath stay repo-relative unless
+# you override figpath. config_local.py is gitignored so it never ships.
+try:
+    import config_local as _local
+    if hasattr(_local, "CONFIG"):
+        for _k, _v in _local.CONFIG.items():
+            setattr(Config, _k, _v)
+    if hasattr(_local, "DATACONFIG"):
+        for _k, _v in _local.DATACONFIG.items():
+            setattr(DataConfig, _k, _v)
+except ImportError:
+    pass

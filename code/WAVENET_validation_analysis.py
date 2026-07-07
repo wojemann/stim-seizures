@@ -52,7 +52,7 @@ from utils import (
 )
 
 # Get paths from config 
-datapath, prodatapath, figpath, metapath = Config.deal(['datapath','prodatapath','figpath','metapath'])
+datapath, prodatapath, figpath, metapath, repopath = Config.deal(['datapath','prodatapath','figpath','metapath','repopath'])
 
 # Hardcoded threshold for WAVENET predictions
 WAVENET_THRESHOLD = 0.69  # Change this value as needed
@@ -244,7 +244,7 @@ def main():
     print(f"Found {len(seizures_df)} test seizures")
     
     # Load clinical annotations
-    annotations_df = pd.read_pickle(ospj(prodatapath, "threshold_tuning_consensus_v3.pkl"))
+    annotations_df = pd.read_pickle(ospj(repopath, "PROCESSED_DATA", "dataset_consensus.pkl"))
     annotations_df = annotations_df[annotations_df.stim == 0]
     
     # Storage for results
