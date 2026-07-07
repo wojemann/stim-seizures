@@ -17,6 +17,9 @@ config.json
 code/config_local.py
 # iEEG.org login credentials — never publish
 *.bin
+# Stray local artifacts — kept locally, not published
+/output.png
+/METADATA/bad_ch_dict.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
