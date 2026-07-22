@@ -1,10 +1,11 @@
 # Multi-expert consensus annotations of spontaneous and stimulation-induced seizures in stereotactic EEG
 
-Code to reproduce the technical validation and data overview analyses from our open sEEG dataset descriptor (\<link coming soon!>). The dataset provides multi-expert consensus annotations of seizure onset and 10-second spread channels for 83 seizures (46 spontaneous, 37 stimulation-induced) from 32 patients (19 HUP, 13 CHOP), and is hosted on Pennsieve in iEEG-BIDS format.
+Code to reproduce the technical validation and data overview analyses from our open sEEG dataset descriptor (\<link coming soon!>). The dataset provides multi-expert consensus annotations of seizure onset and 10-second spread channels for 78 seizures (44 spontaneous, 34 stimulation-induced) from 29 patients (19 HUP, 10 CHOP), and is hosted on Pennsieve in iEEG-BIDS format.
 
 ## Contents
 
 - `code/` — analysis notebooks and scripts (run order in [`code/README.MD`](code/README.MD)):
+  - `metadata_notebook.ipynb` — assemble seizure metadata and electrode localizations
   - `annotation_analysis_and_consensus.ipynb` — builds the majority-vote consensus annotations that every downstream analysis loads
   - `analyzing_annotator_reliability.ipynb` — inter-rater and consensus reliability (manuscript Figs. 3–4)
   - `WAVENET_validation_analysis.py` — example model benchmark against consensus (Fig. 5)

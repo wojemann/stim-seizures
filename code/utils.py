@@ -317,7 +317,7 @@ def clean_labels(channel_li: list, pt: str) -> list:
 
 
 def get_apn_dkt(
-    fname="/mnt/sauce/littlab/users/pattnaik/ictal_patterns/data/metadata/apn_dkt_labels.txt",
+    fname="<path-to>/apn_dkt_labels.txt",
 ) -> dict:
     """Function to get antsPyNet DKT labels from text file
 
@@ -421,7 +421,7 @@ def load_rid_forjson(rid):
     load_rid_forjson loads the DKTantspynet output from IEEG_recon
     """
     dkt_directory = glob(
-        f"/mnt/sauce/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv"
+        f"<path-to>/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.csv"
     )[0]
     brain_df = pd.read_csv(dkt_directory, index_col=0)
     brain_df["name"] = brain_df["name"].astype(str) + "-CAR"
@@ -441,7 +441,7 @@ def label_fix(rid, threshold=0.25, return_old=False, df=None):
     else:
         brain_df = load_rid_forjson(rid)
     json_labels = glob(
-        f"/mnt/sauce/littlab/data/Human_Data/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json"
+        f"<path-to>/CNT_iEEG_BIDS/{rid}/derivatives/ieeg_recon/module3/{rid}_ses-*_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json"
     )[0]
     workinglabels = pd.read_json(json_labels, lines=True)
 
@@ -474,13 +474,7 @@ def electrode_wrapper(pt,rid_hup,datapath):
         rid = str(rid)
         if len(rid) < 4:
             rid = '0' + rid
-        recon_path = ospj('/mnt','sauce','littlab','data',
-                            'Human_Data','CNT_iEEG_BIDS',
-                            f'sub-RID{rid}','derivatives','ieeg_recon',
-                            'module3/')
-        if not os.path.exists(recon_path):
-            recon_path =  ospj('/mnt','sauce','littlab','data',
-                            'Human_Data','recon','BIDS_penn',
+        recon_path = ospj('<path-to>','CNT_iEEG_BIDS',
                             f'sub-RID{rid}','derivatives','ieeg_recon',
                             'module3/')
         electrode_localizations,electrode_regions = optimize_localizations(recon_path,rid)
@@ -491,8 +485,6 @@ def electrode_wrapper(pt,rid_hup,datapath):
         return electrode_localizations,electrode_regions
 
 def optimize_localizations(path_to_recon,RID):
-    # /mnt/leif/littlab/data/Human_Data/recon/BIDS_penn/
-    # python /mnt/leif/littlab/data/Human_Data/recon/code/run_penn_recons.py
     try:
         atropos_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-atropos_radius-2_desc-vox_coordinates.json',lines=True)
         dkt_probs = pd.read_json(path_to_recon + f'sub-RID{RID}_ses-clinical01_space-T00mri_atlas-DKTantspynet_radius-2_desc-vox_coordinates.json',lines=True)
@@ -607,8 +599,8 @@ def surgical_parcelate(region_list):
         surgical_labels.append(surgical_label)
     return surgical_labels
 ######################## BIDS ########################
-BIDS_DIR = "/mnt/leif/littlab/data/Human_Data/CNT_iEEG_BIDS"
-BIDS_INVENTORY = "/mnt/leif/littlab/users/pattnaik/ieeg_recon/migrate/cnt_ieeg_bids.csv"
+BIDS_DIR = "<path-to>/CNT_iEEG_BIDS"
+BIDS_INVENTORY = "<path-to>/cnt_ieeg_bids.csv"
 
 
 def get_cnt_inventory(bids_inventory=BIDS_INVENTORY):

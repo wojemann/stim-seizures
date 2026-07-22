@@ -21,6 +21,10 @@ code/config_local.py
 /output.png
 /METADATA/bad_ch_dict.pkl
 
+# Internal working documents — kept locally, never published
+/stim_dataset_audit.md
+/REPO_CLEANUP_CHECKLIST.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

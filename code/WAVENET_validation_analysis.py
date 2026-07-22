@@ -42,8 +42,8 @@ dynasd_root = os.path.join(script_dir, '..', '..', 'DynaSD')
 if dynasd_root not in sys.path:
     sys.path.insert(0, dynasd_root)
 
-# Import models
-from DynaSD.WAVENET import WVNT
+# WVNT is imported lazily inside load_or_generate_wavenet_probabilities so that the
+# validation runs from precomputed probability files without requiring DynaSD to be installed.
 from config import Config
 from utils import (
     clean_labels, 
@@ -101,6 +101,9 @@ def load_or_generate_wavenet_probabilities(patient, onset_run, onset_labels, mon
     
     # Generate probability file
     print(f"Generating WAVENET probabilities for {patient} {onset_run}...")
+
+    # Lazy import: only needed when regenerating probabilities (requires DynaSD)
+    from DynaSD.WAVENET import WVNT
     
     # Load seizure recording
     seizure, fs_raw, _, _, task, run = get_data_from_bids(
